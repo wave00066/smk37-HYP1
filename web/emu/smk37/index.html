@@ -1,0 +1,480 @@
+<title>HYP-1 SMK-37 Emulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@400;500;600&family=Chakra+Petch:wght@500;600;700&display=swap">
+<style>
+/* Layout: the SMK-37 Elite's panel drawn to scale (one row of controls over the 37 keys), scaled to the window;
+   under it the guide, the controls and the DX7 bank in three columns that stack on a phone.
+   One look, deliberately: the black keyboard and HYP-1's "Synth" screen theme (charcoal, purple, orange). */
+:root {
+  --bg: #121116;          /* the room */
+  --body: #1b1a20;        /* the keyboard's shell */
+  --well: #0a0a0d;        /* wells: screen bezel, pads, keys' gaps */
+  --line: #34313d;
+  --fg: #ece9f4;
+  --dim: #8f89a6;
+  --primary: #a44cff;     /* HYP-1's purple */
+  --accent: #ff8020;      /* HYP-1's orange: what is lit, held */
+  --key: #e9e6ee;
+  --keyb: #16151a;
+  --display: "Chakra Petch", "Barlow Semi Condensed", "Arial Narrow", sans-serif;
+  --text: "Barlow Semi Condensed", "Arial Narrow", "Helvetica Neue", Arial, sans-serif;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--fg); }
+body { font: 16px/1.45 var(--text); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 22px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 18px; }
+h1 { font: 700 clamp(26px, 4vw, 38px)/1 var(--display); letter-spacing: .02em; margin: 0; text-wrap: balance; }
+h1 b { color: var(--primary); font-weight: 700; }
+.sub { color: var(--dim); margin: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button.ui { font: 600 15px var(--display); letter-spacing: .04em; color: var(--fg); background: var(--body); border: 1px solid var(--line); border-radius: 6px; padding: 9px 16px; cursor: pointer; }
+button.ui.go { background: var(--primary); border-color: var(--primary); color: #fff; }
+button.ui:hover { border-color: var(--dim); }
+button.ui:focus-visible, .ctl:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#status, #cpu { color: var(--dim); font-size: 15px; }
+
+/* ---------------------------------------------------------------- the keyboard */
+.stage { position: relative; width: 100%; }
+.dev { position: absolute; left: 0; top: 0; width: 1180px; transform-origin: 0 0; background: var(--body); border-radius: 18px; border: 1px solid #2a2831; box-shadow: 0 30px 60px -30px #000, inset 0 1px 0 #2e2c36; padding: 22px 22px 18px; user-select: none; -webkit-user-select: none; touch-action: none; }
+.top { display: grid; grid-template-columns: 76px 300px minmax(0, 1fr) 318px; gap: 20px; align-items: start; }
+.lbl { font: 600 11px var(--display); letter-spacing: .12em; color: var(--dim); text-transform: uppercase; text-align: center; }
+
+.wheels { display: flex; gap: 12px; justify-content: center; padding-top: 30px; }
+.wheel { display: grid; gap: 6px; justify-items: center; }
+.wheel input { writing-mode: vertical-lr; direction: rtl; width: 30px; height: 150px; accent-color: var(--primary); }
+
+.screenbox { display: grid; gap: 12px; justify-items: center; }
+.bezel { background: var(--well); padding: 10px; border-radius: 10px; border: 1px solid #000; }
+canvas#screen { width: 270px; height: 270px; image-rendering: pixelated; display: block; background: #000; }
+.small { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; width: 230px; }
+
+.mid { display: grid; gap: 16px; }
+.knobs { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+.knob { display: grid; justify-items: center; gap: 4px; }
+.kcap { width: 48px; height: 48px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #3a3842, #121116 70%); border: 2px solid #4a4755; position: relative; cursor: ns-resize; }
+.kcap::after { content: ""; position: absolute; left: 50%; top: 4px; width: 3px; height: 13px; margin-left: -1.5px; background: var(--fg); border-radius: 2px; transform-origin: 50% 20px; transform: rotate(var(--a, 0deg)); }
+.knob .job { font: 500 12px var(--text); color: var(--fg); min-height: 1.2em; }
+.pads { display: grid; grid-template-columns: repeat(8, 1fr); gap: 9px; }
+.pad { aspect-ratio: 1; max-width: 100%; border-radius: 7px; background: #26242c; border: 1px solid #000; box-shadow: inset 0 -2px 0 #0006; cursor: pointer; transition: transform .04s; }
+.pad:active { transform: scale(.96); }
+
+.right { display: grid; gap: 14px; min-width: 0; }
+.faders { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; justify-items: center; }
+.fader { display: grid; gap: 4px; justify-items: center; }
+.fader input { writing-mode: vertical-lr; direction: rtl; width: 28px; height: 104px; accent-color: var(--accent); }
+.btns { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; background: var(--well); padding: 7px; border-radius: 10px; }
+
+.ctl { min-width: 0; overflow-wrap: normal; word-break: keep-all; hyphens: none; font: 700 10px/1.1 var(--display); letter-spacing: .05em; color: var(--fg); background: #26242c; border: 1px solid #000; border-radius: 6px; min-height: 34px; padding: 3px 2px; cursor: pointer; text-transform: uppercase; box-shadow: inset 0 -2px 0 #0007; }
+.ctl.lit { color: #1a1206; background: var(--accent); }
+.ctl.held { outline: 2px solid var(--primary); outline-offset: -2px; }
+.ctl.latched { outline: 2px dashed var(--primary); outline-offset: -2px; }
+.small .ctl { min-height: 30px; }
+
+.keybed { position: relative; height: 150px; margin-top: 20px; background: var(--well); border-radius: 6px; padding: 4px; }
+.keys { position: relative; height: 100%; }
+.wk, .bk { position: absolute; top: 0; cursor: pointer; border-radius: 0 0 5px 5px; }
+.wk { height: 100%; background: var(--key); border: 1px solid #000; box-shadow: inset 0 -6px 0 #cfcbd6; }
+.bk { height: 60%; background: var(--keyb); border: 1px solid #000; z-index: 2; box-shadow: inset 0 -5px 0 #2b2932; }
+.wk.down { background: #cdbcf3; box-shadow: inset 0 -2px 0 #b8a3ea; }
+.bk.down { background: var(--primary); }
+.wk .n { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; font: 600 10px var(--display); color: #8b8596; }
+.wk.mid { box-shadow: inset 0 -6px 0 #cfcbd6, inset 0 4px 0 #c9b2ff; }
+
+/* ---------------------------------------------------------------- under it */
+.cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, .9fr); gap: 22px; }
+@media (max-width: 980px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+section h2 { font: 700 19px var(--display); letter-spacing: .03em; margin: 0 0 8px; }
+section h2 small { font: 500 14px var(--text); color: var(--dim); letter-spacing: 0; margin-left: 6px; }
+section p, section li { color: #d7d3e2; max-width: 65ch; }
+section ol, section ul { padding-left: 1.2em; margin: 0; display: grid; gap: 6px; }
+kbd, .k { font: 700 12px var(--display); letter-spacing: .04em; background: #26242c; border: 1px solid #000; border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; color: var(--fg); white-space: nowrap; }
+.map { width: 100%; border-collapse: collapse; font-size: 15px; }
+.map td { padding: 4px 6px 4px 0; border-top: 1px solid var(--line); vertical-align: top; }
+.map td:first-child { white-space: nowrap; }
+.drop { border: 1px dashed var(--line); border-radius: 8px; padding: 14px; display: grid; gap: 10px; }
+.drop.over { border-color: var(--accent); }
+#syxinfo { color: var(--dim); font-size: 15px; min-height: 1.4em; }
+.note { color: var(--dim); font-size: 14px; }
+@media (prefers-reduced-motion: reduce) { .pad { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>HYP-1 <b>SMK-37</b></h1>
+    <p class="sub">Il firmware HYP-1 per la M-VAVE SMK-37 Elite, con la voce FM, che gira nel browser. Si prova qui; la tastiera non si tocca.</p>
+  </header>
+
+  <div class="bar">
+    <button class="ui go" id="go">Accendi</button>
+    <button class="ui" id="reset">Spegni e riaccendi</button>
+    <button class="ui" id="forget">Cancella i pezzi salvati</button>
+    <span id="status">Spento. Premi Accendi: parte la musica (alza il volume piano).</span>
+    <span id="cpu"></span>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="dev" id="dev">
+      <div class="top">
+        <div class="wheels">
+          <div class="wheel"><input id="pitch" class="ctl-r" type="range" min="-127" max="127" value="0" aria-label="Pitch wheel"><span class="lbl">Pitch</span></div>
+          <div class="wheel"><input id="mod" class="ctl-r" type="range" min="0" max="127" value="0" aria-label="Mod wheel"><span class="lbl">Mod</span></div>
+        </div>
+        <div class="screenbox">
+          <div class="bezel"><canvas id="screen" width="240" height="240" aria-label="Lo schermo"></canvas></div>
+          <div class="small" id="small"></div>
+        </div>
+        <div class="mid">
+          <div class="knobs" id="knobs"></div>
+          <div class="pads" id="pads"></div>
+        </div>
+        <div class="right">
+          <div class="faders" id="faders"></div>
+          <div class="btns" id="btns"></div>
+        </div>
+      </div>
+      <div class="keybed"><div class="keys" id="keys"></div></div>
+    </div>
+  </div>
+
+  <div class="cols">
+    <section>
+      <h2>Come si usa <small>in cinque minuti</small></h2>
+      <ol>
+        <li>Premi <b>Accendi</b>. Compaiono il panda di RedtailWorks e HYP-1, poi parte un pezzo a caso.</li>
+        <li><b>I pad</b> sono i 16 passi della batteria: clicca un pad per aggiungere o togliere un colpo. <span class="k">&lt;</span> <span class="k">&gt;</span> cambiano strumento (cassa, rullante, clap, hi-hat...).</li>
+        <li><b>Le manopole</b>: trascina su e giù, o usa la rotella del mouse. K2 sfoglia le pagine, K4 il pezzo, K5-K8 i quattro valori in fondo allo schermo.</li>
+        <li><b>La voce FM</b>: clicca <span class="k">Patch</span> due volte (pagina FM). Poi tieni <span class="k">Scale</span> col tasto destro (resta acceso) e clicca <span class="k">Chord</span>: ora i tasti suonano il DX7, su ogni pagina. Rifai lo stesso per tornare alla scala.</li>
+        <li><b>Cambia suono</b>: sulla pagina FM gira K6 (Patch): A01 piano, A02 organo, C03 archi, D25 campane... Il nome appare sopra le manopole.</li>
+      </ol>
+      <p class="note">Per tenere premuto un pulsante mentre ne clicchi un altro: clic destro (o Maiusc + clic) lo blocca acceso, un altro clic lo rilascia. Con la tastiera del computer: Z S X D C V G B H N J M suonano un'ottava, Q 2 W 3 E R 5 T 6 Y 7 U I quella sopra.</p>
+    </section>
+
+    <section>
+      <h2>I comandi <small>come sono stampati</small></h2>
+      <table class="map">
+        <tr><td><span class="k">Patch</span></td><td>Tempo; di nuovo: FM, poi FM keys</td></tr>
+        <tr><td><span class="k">Chord</span></td><td>Pad (di nuovo: inviluppo, LFO, accordi)</td></tr>
+        <tr><td><span class="k">Note Repeat</span></td><td>Drone</td></tr>
+        <tr><td><span class="k">Arp</span></td><td>Acid (la linea 303)</td></tr>
+        <tr><td><span class="k">Seq</span></td><td>Batteria; tieni premuto: il sequencer</td></tr>
+        <tr><td><span class="k">BT</span></td><td>Breakdown, build, drop; su Globe: salva il pezzo</td></tr>
+        <tr><td><span class="k">FX</span></td><td>Menu effetti: i tasti diventano effetti</td></tr>
+        <tr><td><span class="k">Para</span></td><td>L'accordo successivo</td></tr>
+        <tr><td><span class="k">Scale</span></td><td>Shift (da tenere premuto)</td></tr>
+        <tr><td><span class="k">Knob Bank</span></td><td>Selettore: pezzi e strumenti sui pad</td></tr>
+        <tr><td><span class="k">Fader Bank</span></td><td>Fader: A livelli, B acid, C spazio</td></tr>
+        <tr><td>Ruote</td><td>Pitch: bend. Mod: apre i filtri</td></tr>
+      </table>
+    </section>
+
+    <section>
+      <h2>Banco DX7 <small>file .syx</small></h2>
+      <div class="drop" id="drop">
+        <p class="note" style="margin:0">Un banco DX7 da 32 voci (4104 byte) diventa U01-U32: lo trovi sulla pagina FM girando Patch oltre D32, e nel Sound del pad. Resta salvato in questo browser.</p>
+        <input type="file" id="syx" accept=".syx,.SYX,application/octet-stream">
+        <div id="syxinfo">Accendi, poi scegli o trascina qui un file .syx.</div>
+      </div>
+      <p class="note">Su questa pagina gira il firmware vero, compilato per il browser: suono, schermo e pad sono quelli che avrai sulla tastiera. Mancano solo le cose fisiche (USB, il salvataggio in flash, il Bluetooth). Il carico che leggi in alto è quello del tuo computer, non della tastiera.</p>
+    </section>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------- the panel
+const B = { FX: 0, SEL: 1, ENV: 2, LFO: 3, EDIT: 4, GLO: 5, HOME: 6, SAVE: 7, ARP: 8, SEQ: 9, PLAY: 10, REC: 11, OCTDN: 12, OCTUP: 13 };
+const SB = { KNOB: 0, FADER: 1, LEFT: 2, RIGHT: 3 };
+// the right-hand grid as the SMK-37 Elite prints it, and the FM-1 button each one is
+const GRID = [["Arp", B.ARP, "Acid"], ["Note Repeat", B.LFO, "Drone"], ["Scale", B.SEL, "Shift"], ["Chord", B.ENV, "Pad"], ["Globe", B.GLO, "Global"], ["BT", B.SAVE, "Breakdown / salva"],
+              ["Patch", B.HOME, "Tempo, FM"], ["Para", B.EDIT, "Accordo successivo"], ["FX", B.FX, "Effetti"], ["Seq", B.SEQ, "Batteria"], ["Seq Play", B.PLAY, "Play / stop"], ["Seq Rec", B.REC, "Freeze"]];
+const SMALL = [["Knob Bank", "s", SB.KNOB], ["Fader Bank", "s", SB.FADER], ["<", "s", SB.LEFT], [">", "s", SB.RIGHT], ["Octave-", "b", B.OCTDN], ["Octave+", "b", B.OCTUP]];
+const KNOBS = [["K1", "master", "Volume"], ["K2", 0, "Pagine"], ["K3", 1, "Modo"], ["K4", 2, "Pezzo"], ["K5", 3, "valore a"], ["K6", 4, "valore b"], ["K7", 5, "valore c"], ["K8", 6, "valore d"]];
+const $ = (id) => document.getElementById(id);
+let node = null, btnMask = 0, latched = 0, smkMask = 0, smkLatched = 0;
+const held = new Map();               // pointer id -> {t: "b" | "s", bit}
+const send = (m, tr) => { if (node) node.port.postMessage(m, tr || []); };
+
+const ctlEls = { b: {}, s: {} };
+function mkCtl(parent, label, t, bit, tip) {
+  const el = document.createElement("button");
+  el.className = "ctl"; el.type = "button"; el.textContent = label; el.title = tip || label;
+  el.id = "c-" + t + bit;
+  el.addEventListener("contextmenu", (e) => e.preventDefault());
+  el.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    if (e.button === 2 || e.shiftKey) { toggleLatch(t, bit); return; }
+    if (isLatched(t, bit)) { toggleLatch(t, bit); return; }
+    el.setPointerCapture(e.pointerId);
+    held.set("p" + e.pointerId, { t, bit });
+    since.set("p" + e.pointerId, performance.now());
+    syncCtl();
+  });
+  parent.appendChild(el);
+  ctlEls[t][bit] = el;
+}
+const isLatched = (t, bit) => !!((t === "b" ? latched : smkLatched) & (1 << bit));
+function toggleLatch(t, bit) { if (t === "b") latched ^= 1 << bit; else smkLatched ^= 1 << bit; syncCtl(); }
+function syncCtl() {
+  let b = latched, s = smkLatched;
+  for (const h of held.values()) if (h.t === "b") b |= 1 << h.bit; else s |= 1 << h.bit;
+  if (b !== btnMask) { btnMask = b; send({ type: "buttons", mask: b }); }
+  if (s !== smkMask) { smkMask = s; send({ type: "smkbtn", mask: s }); }
+  for (const [t, set] of Object.entries(ctlEls))
+    for (const [bit, el] of Object.entries(set)) {
+      const m = t === "b" ? b : s, l = t === "b" ? latched : smkLatched;
+      el.classList.toggle("held", !!(m & (1 << bit)) && !(l & (1 << bit)));
+      el.classList.toggle("latched", !!(l & (1 << bit)));
+    }
+}
+for (const [label, bit, tip] of GRID) mkCtl($("btns"), label, "b", bit, tip);
+for (const [label, t, bit] of SMALL) mkCtl($("small"), label, t, bit);
+
+// knobs: drag up / down (8 px a click) or the mouse wheel; K1 is the volume (a virtual pot, as on the keyboard)
+let pot = 724;
+const knobEls = [];
+KNOBS.forEach(([name, role, job], i) => {
+  const k = document.createElement("div");
+  k.className = "knob";
+  k.innerHTML = `<span class="lbl">${name}</span><div class="kcap ctl" tabindex="0" role="slider" aria-label="${name} ${job}"></div><span class="job">${job}</span>`;
+  $("knobs").appendChild(k);
+  const cap = k.querySelector(".kcap");
+  cap.className = "kcap"; cap.tabIndex = 0;
+  let ang = role === "master" ? (pot / 1023) * 270 - 135 : 0, acc = 0, y0 = null;
+  const show = () => cap.style.setProperty("--a", ang + "deg");
+  const step = (n) => {
+    if (!n) return;
+    if (role === "master") { pot = Math.max(0, Math.min(1023, pot + 24 * n)); ang = (pot / 1023) * 270 - 135; send({ type: "master", value: (pot * pot) >> 8 }); }
+    else { ang += 15 * n; send({ type: "enc", role, n }); }
+    show();
+  };
+  cap.addEventListener("pointerdown", (e) => { e.preventDefault(); cap.setPointerCapture(e.pointerId); y0 = e.clientY; acc = 0; });
+  cap.addEventListener("pointermove", (e) => { if (y0 === null) return; acc += (y0 - e.clientY) / scale; y0 = e.clientY; const n = Math.trunc(acc / 8); if (n) { acc -= n * 8; step(n); } });
+  cap.addEventListener("pointerup", () => { y0 = null; });
+  cap.addEventListener("wheel", (e) => { e.preventDefault(); step(e.deltaY < 0 ? 1 : -1); }, { passive: false });
+  cap.addEventListener("keydown", (e) => { if (e.key === "ArrowUp" || e.key === "ArrowRight") { step(1); e.preventDefault(); } if (e.key === "ArrowDown" || e.key === "ArrowLeft") { step(-1); e.preventDefault(); } });
+  show();
+  knobEls.push(cap);
+});
+
+// pads: 0..7 the top row, 8..15 the bottom row; the velocity from where it is hit (lower: harder)
+const padEls = [];
+for (let p = 0; p < 16; p++) {
+  const d = document.createElement("button");
+  d.className = "pad"; d.type = "button"; d.id = "pad" + p; d.setAttribute("aria-label", "Pad " + (p + 1));
+  d.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    const r = d.getBoundingClientRect(), v = Math.round(50 + 77 * Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+    send({ type: "pad", pad: p, vel: v });
+  });
+  $("pads").appendChild(d);
+  padEls.push(d);
+}
+function drawPads(rgb) {
+  for (let p = 0; p < 16; p++) {
+    const r = rgb[p * 3], g = rgb[p * 3 + 1], b = rgb[p * 3 + 2];
+    const lit = r + g + b > 0, f = (x) => Math.min(255, 38 + x * 3);
+    padEls[p].style.background = lit ? `rgb(${f(r)},${f(g)},${f(b)})` : "";
+    padEls[p].style.boxShadow = lit ? `0 0 ${8 + (r + g + b) / 30}px rgba(${f(r)},${f(g)},${f(b)},.55), inset 0 -2px 0 #0004` : "";
+  }
+}
+
+// faders
+["Fader 1", "Fader 2", "Fader 3", "Fader 4"].forEach((n, i) => {
+  const f = document.createElement("div");
+  f.className = "fader";
+  f.innerHTML = `<input type="range" min="0" max="127" value="64" id="fader${i}" aria-label="${n}"><span class="lbl">F${i + 1}</span>`;
+  f.querySelector("input").addEventListener("input", (e) => send({ type: "fader", i, v: +e.target.value }));
+  $("faders").appendChild(f);
+});
+// wheels: the pitch wheel springs back to the middle when let go
+const pitch = $("pitch"), mod = $("mod");
+const sendWheels = () => send({ type: "wheel", pitch: +pitch.value, mod: +mod.value });
+pitch.addEventListener("input", sendWheels);
+mod.addEventListener("input", sendWheels);
+const spring = () => { if (+pitch.value !== 0) { pitch.value = 0; sendWheels(); } };
+pitch.addEventListener("pointerup", spring); pitch.addEventListener("change", spring); pitch.addEventListener("pointercancel", spring);
+
+// the 37 keys, C3 .. C6. Key k: keybed key k (0 = C3); the FM-1's 27 are F3..G5 (5..31), marked on top
+const BLACK = [1, 3, 6, 8, 10];
+const keyEls = [];
+(function keybed() {
+  const box = $("keys"), nw = 22;
+  let w = 0;
+  for (let k = 0; k < 37; k++) {
+    const pc = k % 12, black = BLACK.includes(pc), el = document.createElement("div");
+    el.className = black ? "bk" : "wk";
+    if (!black) {
+      el.style.left = (w * 100 / nw) + "%"; el.style.width = (100 / nw) + "%";
+      if (pc === 0) el.innerHTML = `<span class="n">C${3 + k / 12}</span>`;
+      if (k >= 5 && k <= 31) el.classList.add("mid");
+      w++;
+    } else {
+      el.style.left = (w * 100 / nw - 0.62 * 100 / nw / 2 - 0.0) + "%"; el.style.width = (0.62 * 100 / nw) + "%";
+    }
+    el.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      const r = el.getBoundingClientRect(), v = Math.round(45 + 82 * Math.min(1, Math.max(0, (e.clientY - r.top) / r.height)));
+      keyDown("p" + e.pointerId, k, v);
+    });
+    box.appendChild(el);
+    keyEls[k] = el;
+  }
+})();
+const keyHeld = new Map();            // pointer / computer key -> keybed key
+let keyBits = [0, 0], vel = 100;
+function syncKeys() {
+  let lo = 0, hi = 0;
+  for (const k of keyHeld.values()) if (k < 32) lo |= 1 << k; else hi |= 1 << (k - 32);
+  lo >>>= 0;
+  if (lo !== keyBits[0] || hi !== keyBits[1]) { keyBits = [lo, hi]; send({ type: "keybed", lo, hi, vel }); }
+  keyEls.forEach((el, k) => el.classList.toggle("down", k < 32 ? !!(lo & (1 << k)) : !!(hi & (1 << (k - 32)))));
+}
+// a press lasts at least 80 ms, as a finger's: the firmware reads the panel every 16 ms, a quicker click
+// would go down and up between two reads and do nothing
+const since = new Map();
+function keyDown(id, k, v) { vel = v; keyHeld.set(id, k); since.set(id, performance.now()); syncKeys(); }
+function release(id) {
+  const t = since.has(id) ? 80 - (performance.now() - since.get(id)) : 0;
+  if (t > 0) { setTimeout(() => release(id), t); return; }
+  since.delete(id);
+  if (held.delete(id)) syncCtl();
+  if (keyHeld.delete(id)) syncKeys();
+}
+addEventListener("pointerup", (e) => release("p" + e.pointerId));
+addEventListener("pointercancel", (e) => release("p" + e.pointerId));
+// the computer's keyboard: two octaves from C4 (keybed key 12)
+const QWERTY = "zsxdcvgbhnjm";
+const QWERTY2 = "q2w3er5t6y7ui";
+addEventListener("keydown", (e) => {
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement?.tagName || "")) return;
+  const c = e.key.toLowerCase();
+  let k = QWERTY.indexOf(c);
+  if (k >= 0) k += 12; else { k = QWERTY2.indexOf(c); if (k >= 0) k += 24; }
+  if (k >= 0 && k < 37) { keyDown("k" + c, k, 100); e.preventDefault(); }
+});
+addEventListener("keyup", (e) => release("k" + e.key.toLowerCase()));
+addEventListener("blur", () => { for (const id of [...keyHeld.keys()]) keyHeld.delete(id); for (const id of [...held.keys()]) held.delete(id); syncKeys(); syncCtl(); });
+
+// the panel scaled to the window (1180 px wide as drawn)
+let scale = 1;
+function fit() {
+  const st = $("stage"), dev = $("dev");
+  scale = Math.min(1, st.clientWidth / 1180);
+  dev.style.transform = `scale(${scale})`;
+  st.style.height = (dev.offsetHeight * scale) + "px";
+}
+addEventListener("resize", fit);
+fit();
+
+// ---------------------------------------------------------------- screen and lights
+const ctx = $("screen").getContext("2d"), img = ctx.createImageData(240, 240);
+function drawScreen(fb) {
+  const d = img.data;
+  for (let i = 0; i < 240 * 240; i++) {
+    const v = fb[i], p = ((v >> 8) | (v << 8)) & 0xFFFF;
+    d[i * 4] = ((p >> 11) & 31) * 255 / 31; d[i * 4 + 1] = ((p >> 5) & 63) * 255 / 63; d[i * 4 + 2] = (p & 31) * 255 / 31; d[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+(function blank() { ctx.fillStyle = "#16151b"; ctx.fillRect(0, 0, 240, 240); ctx.fillStyle = "#8f89a6"; ctx.font = "600 15px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillText("PREMI ACCENDI", 120, 124); })();
+function drawLights(b, s) {
+  for (const [bit, el] of Object.entries(ctlEls.b)) el.classList.toggle("lit", !!(b & (1 << bit)));
+  for (const [bit, el] of Object.entries(ctlEls.s)) el.classList.toggle("lit", !!(s & (1 << bit)));
+}
+
+// ---------------------------------------------------------------- storage (this browser only)
+const STORE_KEY = "hyp1-smk37-store";
+function loadStore() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(STORE_KEY) || "{}"), out = {};
+    for (const [o, b64] of Object.entries(raw)) out[o] = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)).buffer;
+    return out;
+  } catch { return {}; }
+}
+function saveStore(store) {
+  try {
+    const raw = {};
+    for (const [o, u8] of Object.entries(store)) { let s = ""; for (const c of u8) s += String.fromCharCode(c); raw[o] = btoa(s); }
+    localStorage.setItem(STORE_KEY, JSON.stringify(raw));
+  } catch { /* storage unavailable: this session only */ }
+}
+
+// ---------------------------------------------------------------- switching on
+async function loadWasm() {
+  if (typeof HYP1_WASM !== "undefined") return Uint8Array.from(atob(HYP1_WASM), (c) => c.charCodeAt(0)).buffer;
+  const r = await fetch("amb.wasm");
+  if (!r.ok) throw new Error(`amb.wasm: ${r.status}`);
+  return r.arrayBuffer();
+}
+async function switchOn() {
+  const go = $("go");
+  go.disabled = true; go.textContent = "Accensione...";
+  try {
+    const ac = new AudioContext({ sampleRate: 44100, latencyHint: "interactive" });
+    const [wasm] = await Promise.all([loadWasm(), ac.audioWorklet.addModule("worklet.js")]);
+    node = new AudioWorkletNode(ac, "hyp1smk", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+    node.connect(ac.destination);
+    const ready = new Promise((res) => {
+      node.port.onmessage = (e) => {
+        const m = e.data;
+        if (m.type === "ready") res();
+        else if (m.type === "frame") {
+          if (m.fb) drawScreen(m.fb);
+          drawLights(m.buttons, m.smklit);
+          drawPads(m.pads);
+          if (m.load !== undefined) $("cpu").textContent = `HYP-1 usa il ${m.load}% del tempo di questo computer`;
+          if (m.store) saveStore(m.store);
+        }
+      };
+    });
+    node.port.postMessage({ type: "load", wasm, store: loadStore(), master: (pot * pot) >> 8, seed: (Math.random() * 4294967295) >>> 0 || 1 }, [wasm]);
+    await ready;
+    await ac.resume();
+    go.hidden = true;
+    $("status").textContent = "Acceso.";
+    $("syxinfo").textContent = "Scegli o trascina qui un file .syx.";
+    syncCtl(); syncKeys();
+    for (let i = 0; i < 4; i++) send({ type: "fader", i, v: +$("fader" + i).value });
+  } catch (err) {
+    go.disabled = false; go.textContent = "Accendi";
+    $("status").textContent = "Non parte: " + (err && err.message || err) + ". Prova con Chrome o Edge aggiornati.";
+  }
+}
+$("go").addEventListener("click", switchOn);
+$("reset").addEventListener("click", () => location.reload());
+$("forget").addEventListener("click", (e) => {
+  const f = e.currentTarget;
+  if (f.dataset.armed) { try { localStorage.removeItem(STORE_KEY); } catch {} location.reload(); }
+  else { f.dataset.armed = "1"; f.textContent = "Clicca ancora: cancella tutto"; }
+});
+
+// ---------------------------------------------------------------- a DX7 bank
+function checkSyx(b) {               // as the firmware does (en_fm_bulk_ok): the names, or why not
+  if (b.length !== 4104) return { err: `${b.length} byte: un banco DX7 da 32 voci è di 4104 byte.` };
+  if (b[0] !== 0xF0 || b[1] !== 0x43 || (b[2] & 0xF0) || b[3] !== 0x09 || b[4] !== 0x20 || b[5] !== 0x00 || b[4103] !== 0xF7)
+    return { err: "Non è un banco DX7 da 32 voci (F0 43 0n 09 20 00 ... F7)." };
+  let sum = 0;
+  for (let i = 6; i < 4102; i++) { if (b[i] & 0x80) return { err: "Un byte di dati oltre 127: file rovinato." }; sum += b[i]; }
+  if (((-sum) & 0x7F) !== b[4102]) return { err: "Checksum sbagliato: file rovinato." };
+  const names = [];
+  for (let v = 0; v < 32; v++) names.push(String.fromCharCode(...b.slice(6 + v * 128 + 118, 6 + v * 128 + 128)).replace(/[^\x20-\x7e]/g, " ").trimEnd());
+  return { names };
+}
+async function takeSyx(file) {
+  if (!file) return;
+  const buf = new Uint8Array(await file.arrayBuffer()), info = $("syxinfo"), c = checkSyx(buf);
+  if (c.err) { info.textContent = file.name + ": " + c.err + " (anche la tastiera lo rifiuterebbe)"; }
+  else info.textContent = `${file.name}: ${c.names.slice(0, 4).join(", ")}... in U01-U32.`;
+  if (!node) { info.textContent += " Accendi prima l'emulatore."; return; }
+  const copy = buf.slice().buffer;
+  send({ type: "sysex", bytes: copy }, [copy]);
+}
+$("syx").addEventListener("change", (e) => takeSyx(e.target.files[0]));
+const drop = $("drop");
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); takeSyx(e.dataTransfer.files[0]); });
+</script>

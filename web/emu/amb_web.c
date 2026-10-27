@@ -95,3 +95,41 @@ __attribute__((used, visibility("default"))) float *web_bg(void)
     bg_rgb(9, th->acid);
     return bg_out;
 }
+
+#if BOARD_SMK37
+/* The SMK-37 build in the browser (web/emu/smk37/): its own controls, as amb_host.c drives them in the tests */
+__attribute__((used, visibility("default"))) void web_smk_buttons(uint32_t m) { smk_btn_held = m; }   /* SB_* */
+/* the 37 keys held (bit k: key k, 0 = C3): a key going down is a press (its velocity: web_key_vel first); the
+ * middle 27 are also the FM-1's keys */
+__attribute__((used, visibility("default"))) void web_keybed(uint32_t lo, uint32_t hi)
+{
+    uint64_t m = (uint64_t)lo | (uint64_t)(hi & 0x1Fu) << 32;
+    kb_hits |= m & ~kb_held;
+    kb_held = m;
+    held_keys = (uint32_t)(m >> 5) & ((1u << NKEYS) - 1u);
+}
+__attribute__((used, visibility("default"))) void web_key_vel(int v) { key_vel_v = v < 1 ? 1 : v > 127 ? 127 : v; }
+__attribute__((used, visibility("default"))) void web_pad(int p, int vel)   /* a pad hit (0..7 top row, 8..15 bottom) */
+{
+    if ((unsigned)p < SMK_NPADS) {
+        pad_vel_v[p] = vel < 1 ? 1 : vel > 127 ? 127 : vel;
+        pad_hits |= 1u << p;
+    }
+}
+__attribute__((used, visibility("default"))) void web_fader(int i, int v)   /* fader 0..3 to 0..127 */
+{
+    if ((unsigned)i < 4u)
+        fader_v[i] = v < 0 ? 0 : v > 127 ? 127 : v;
+}
+__attribute__((used, visibility("default"))) void web_wheel(int pitch, int modw)   /* -127..127, 0..127 */
+{
+    wheel_p = pitch;
+    wheel_m = modw;
+    wheel_new = 1;
+}
+__attribute__((used, visibility("default"))) uint8_t *web_pad_rgb(void) { return &pad_rgb[0][0]; }   /* 16 x RGB */
+__attribute__((used, visibility("default"))) uint32_t web_smk_lit(void) { return smk_lit; }
+/* a SysEx dump arriving over USB (a DX7 bank): the page writes it at web_sysex_buf, then says how long */
+__attribute__((used, visibility("default"))) uint8_t *web_sysex_buf(void) { return sx_buf; }
+__attribute__((used, visibility("default"))) void web_sysex(uint32_t n) { sx_n = n < sizeof sx_buf ? n : (uint32_t)sizeof sx_buf; }
+#endif
