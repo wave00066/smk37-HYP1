@@ -29,6 +29,8 @@ Installing it is at your own risk, though it's hard to get stuck: the web instal
 own firmware back, and an FM-1 that fails to start twice comes up in a safe mode the installer can reach.
 
 
+**M-Vave SMK-37:** see [SMK-37 instructions](SMK37.md).
+
 ## Also here: LOF-1 (experimental)
 
 [`lof1/`](lof1/) holds **LOF-1**, a second RedtailWorks firmware for the FM-1: a lofi groovebox. You play the

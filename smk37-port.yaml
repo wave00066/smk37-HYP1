@@ -1,0 +1,105 @@
+# smk37-port.yaml: every decision for HYP-1's SMK-37 port, in one place (the fm1-to-smk37 kit's setup file,
+# https://github.com/genkigenki/fm1-to-smk37). Filled from the owner's answers (2026-10-27); the code follows
+# this file (firmware/src/app/ui_smk.c, ui.c, plat_fm1.c, dsp/amb.c; SMK37.md is the user's side of it).
+
+firmware:
+  name: HYP-1                   # unchanged on the SMK-37: name, RedtailWorks card, HYP-1 card ("FOR THE M-VAVE SMK-37")
+  upstream: https://github.com/RustyPawz/fm1-HYP1
+  base: HYP-1 main 57c456d (1.5.x; a fork of AMB-1 on Felucca's platform, no shared history with Felucca)
+  family: x0x                   # AMB-1 / X0X family: app/{plat_fm1,panel,main_fm1,ui}.c, dsp/amb.c, host/amb_host.c
+  board_layer: amb              # genkigenki/fm1-amb smk37 (60dfbec..smk37): every platform file applied as it is (HYP-1's
+                                # platform is byte for byte AMB-1 0.9's), the app hunks redone for HYP-1
+  lost_on_smk:
+    - TRS MIDI IN / clock in over TRS (USB MIDI and clock only)
+    - the key lights (the scale, the steps, the effects on the keys): the pads and the screen instead
+    - the MASTER pot as an absolute pot: K1 is an endless knob (a virtual pot)
+  priorities:
+    - the HYP-1 workflow and field manual unchanged (numbers 1-25 keep their meaning)
+    - the drum steps always under the fingers (no SEQ hold)
+    - the acid's filter hands-on (faders bank B)
+    - the screen speaks the SMK-37's printed names; everything visible (no hidden modes)
+
+delivery:
+  mode: own                     # the owner's fork first (CI: .github/workflows/smk37.yml); an upstream PR to RustyPawz later
+  pr: ""
+  fork: "<owner>/fm1-HYP1 branch smk37"
+  package: hyp1-smk37-elite.fwsc, hyp1-smk37.fwsc, hyp1-smk37-mke.fwsc
+  identity: SMK-37 Elite_7XXYYZZ, SMK-37 Pro_7XXYYZZ, MKE-P37_7XXYYZZ   # HYP-1's own numbers (FM-1_7XXYYZZ); dev _700
+  usb_name: HYP-1 SMK-37        # (FM-1: "HYP-1 FM-1"); the installers' filters match "smk" and "hyp-1"
+  data_family: HYP1
+  copyright: ""                 # the porter's line in new SMK files, if the owner wants one
+
+models: [elite, pro, mke]       # the owner's unit: SMK-37 Elite
+
+keys:
+  middle: fm1                   # F3..G5 = the FM-1's 27 keys, every layer as on the FM-1
+  outer: extend                 # C3..E3, G#5..C6: the scale too; on a hand-played voice's pages, that voice
+  velocity: unused              # HYP-1's voices play at one level (as on the FM-1)
+
+pads:
+  pattern: steps                # the 16 steps of the pads' lane, in the pattern the sequencer edits, on any page
+  order: reading                # top row (hardware 0..7) steps 1-8, bottom row 9-16
+  colours: screen               # hits in the theme's drums colour, the playhead bright (accent on a hit), beats faint
+  idle: dark
+  playhead: bright
+  lane: "< >"                   # kick snare clap hat open perc (as OCT in the sequencer)
+  picker:
+    enabled: true
+    pin: KNOB BANK              # top row pieces 01-08; bottom row the six lanes, then pieces 09 10 (the owner's layout)
+    also: a K4 (PRESETS) turn shows it for 3.6 s
+    piece_pad: "that piece; SCALE held while playing: on the next bar (blinking until then)"
+    lane_pad: that lane, and the pads go back to its steps
+  velocity: false
+
+faders:
+  pattern: banks
+  takeover: soft
+  bank_button: FADER BANK       # LED lit off bank A
+  banks:
+    A: [Pad level, Drone level, Acid level, Drums level]
+    B: [Acid cutoff, Acid reso, Acid env mod, Acid decay]
+    C: [Echo, Reverb, Noise level, Drone cutoff]
+  screen: card                  # the fader card in the main area, 1.8 s; with the picker pinned, a line in the header
+
+wheels:
+  pitch: {target: bend, range_semitones: 2, applies_to: [pad, drone, acid]}   # PM() in dsp/amb.c, by hand too
+  mod: {target: macro, detail: "the acid's and the drone's cutoff open together, up to 3 octaves (PCUT_ADD)"}
+  saved: never                  # the header shows BEND / FLT while one is off rest
+  calibration: auto
+
+rules:
+  no_doubles: true
+  doubles_allowed:
+    - "< > = OCT- / OCT+ on the sequencer page (both pick the lane)"
+    - faders = the pages' knobs for those values (the owner's banks)
+    - picker pieces = K4 PRESETS (the owner's picker layout)
+
+knobs:
+  layout: fm1                   # K1 MASTER, K2 SELECT, K3 ALGORITHM, K4 PRESETS, K5-K8 = KNOB 1-4 (values a b c d)
+
+buttons:
+  map: printed                  # PATCH HOME, PARA EDIT, CHORD ENV, NOTE REPEAT LFO, SCALE SEL, GLOBE GLO, BT SAVE,
+                                # ARP, FX, SEQ, SEQ PLAY PLAY, SEQ REC REC, OCTAVE-/+ OCT-/+
+  names: printed_on_screen      # help cards "BT (SAVE)", hints "SCALE + CHORD", Global "BT: STORE"
+  extra:
+    KNOB BANK: the picker
+    FADER BANK: fader bank A / B / C
+    "<": the pads' lane back
+    ">": the pads' lane forward
+
+screen:
+  style: keep                   # HYP-1's screens; plus the picker and the fader card in the main area, the pads' lane on
+                                # the drum pattern (a tick, "PADS KCK"), BEND / FLT in the header
+  rules:
+    - group screens by meaning; the knob block at the bottom of the screen
+    - the screen shows what you touch first (value next to the thing, a short hint line)
+    - same colours and same places on screen and panel (pads = picker tiles, drums colour = hits)
+    - no hidden modes; play first, few menus
+
+pedal: none
+
+open_questions:
+  - "the TRS jack as MIDI OUT (docs/06, the TRS jack pattern; Snoop37 has a driver): HYP-1 sends notes and clock over USB only"
+  - pad pressure (aftertouch): the community layer reads hits only; M-VAVE's smk37_open scan.c reads pressure
+  - velocity on the hand-played voices (en_note has no level)
+  - the remote (SCALE + GLOBE) does not send the SMK's extra controls

@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: GPL-3.0-only
+# HYP-1 for the M-Vave SMK-37 (SMK37.md): every push to the smk37 branch builds the three SMK-37 packages
+# (Elite, Pro, MKE-P37) with JieLi's toolchain, checks that the FM-1 build is byte for byte the one the branch
+# started from, runs the tests, and keeps the packages as the run's artifacts (Actions > the run > Artifacts).
+# It publishes nothing: the site stays firmware.yml's.
+name: smk37
+on:
+  push:
+    branches: [smk37]
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  BASE: 57c456d                # the HYP-1 commit the SMK-37 port starts from (FM-1 byte-identity)
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tools
+        run: pip install Pillow mido
+      - name: JieLi toolchain and SDK (cached)
+        id: jl
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.jieli
+            ~/fw-AC79_AIoT_SDK
+          key: jieli-ac79-v1.2.1
+      - name: Fetch them if not cached
+        if: steps.jl.outputs.cache-hit != 'true'
+        run: |
+          try() { for i in 1 2 3 4; do "$@" && return 0; echo "retry $i: $*"; sleep $((i * 15)); done; return 1; }
+          [ -x ~/.jieli/toolchain/pi32v2/bin/clang ] || try tools/get_toolchain.sh
+          fetch_sdk() {
+            rm -rf ~/fw-AC79_AIoT_SDK
+            git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+              https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK
+          }
+          [ -f ~/fw-AC79_AIoT_SDK/cpu/wl82/tools/uboot.boot ] || try fetch_sdk
+      - name: Keep them for next time
+        if: steps.jl.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.jieli
+            ~/fw-AC79_AIoT_SDK
+          key: jieli-ac79-v1.2.1
+      - name: Version
+        run: echo "V=1.5.$((GITHUB_RUN_NUMBER % 100))" >> "$GITHUB_ENV"     # identity SMK-37 Elite_70105NN
+      - name: The FM-1 build, byte for byte the base's (dev builds, the same day)
+        run: |
+          git worktree add ../base "$BASE"
+          (cd ../base && ./build.sh >/dev/null && sha256sum build/amb.bin build/amb.fwsc build/loader/ota.bin) > ../base.sha
+          ./build.sh >/dev/null
+          sha256sum build/amb.bin build/amb.fwsc build/loader/ota.bin > ../branch.sha
+          cat ../base.sha ../branch.sha
+          diff <(awk '{print $1}' ../base.sha) <(awk '{print $1}' ../branch.sha) || {
+            echo "::error title=FM-1 build changed::the FM-1 app, package or loader is not the base's"; exit 1; }
+          echo "::notice title=FM-1::byte-identical to $BASE"
+      - name: The SMK-37 packages (Elite, Pro, MKE-P37)
+        run: |
+          set -o pipefail
+          mkdir -p out
+          for m in elite pro mke; do
+            BOARD=smk37 MODEL=$m ./build.sh --release "$V" 2>&1 | tee build-$m.log | tail -4
+            cp build/hyp1-smk37*-"$V".fwsc out/ 2>/dev/null || true
+          done
+          ls -l out
+          (cd out && sha256sum *.fwsc > SHA256SUMS && cat SHA256SUMS)
+      - name: "Tests (the FM-1 build last, the tests use its files)"
+        run: |
+          set -o pipefail
+          BOARD=smk37 MODEL=elite ./build.sh >/dev/null    # dev builds: the identities the tests expect (_700)
+          BOARD=smk37 MODEL=mke ./build.sh >/dev/null
+          ./build.sh >/dev/null
+          AC79_SDK=~/fw-AC79_AIoT_SDK tests/run_tests.sh 2>&1 | tee tests.log || {
+            echo "::error title=tests failed::$(grep -A12 FAIL tests.log | head -60 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
+            exit 1
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hyp1-smk37-${{ env.V }}
+          path: out/
