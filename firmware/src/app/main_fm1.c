@@ -188,7 +188,11 @@ static void safe_main(void)
     draw_text_box(0, 102, 240, &FONT_S, "NO SOUND. USB IS ON:", C_WHITE, 1);
     draw_text_box(0, 122, 240, &FONT_S, "REINSTALL FROM THE", C_WHITE, 1);
     draw_text_box(0, 142, 240, &FONT_S, "WEB INSTALLER.", C_WHITE, 1);
+#if BOARD_SMK37
+    draw_text_box(0, 172, 240, &FONT_S, "SEQ PLAY: TRY AGAIN", C_HI, 1);
+#else
     draw_text_box(0, 172, 240, &FONT_S, "PLAY: TRY AGAIN", C_HI, 1);
+#endif
     if (fm1_crash.magic == FM1_CRASH_MAGIC) {
         b[0] = 'P';
         b[1] = 'C';
@@ -240,10 +244,14 @@ static void fm1_main(void)
     uint32_t last_frame = 0;
     {
         uint32_t f = irq_save();
-        flash_ok = FL_FAR(fl_jedec_ram)() == 0x856014u;   /* the expected 1 MiB part, else RAM only */
+        flash_ok = FL_JEDEC_OK(FL_FAR(fl_jedec_ram)());   /* the expected 1 MiB part, else RAM only */
         irq_restore(f);
         if (flash_ok)
             ota_boot_cleanup();
+#if BOARD_SMK37
+        if (flash_ok)
+            st_owner_check();                       /* the SMK store: ours, or cleared (storage.c) */
+#endif
     }
     lcd_init();
     palette_set(1);
@@ -271,6 +279,9 @@ static void fm1_main(void)
     en_dbg.max_us = 0;
     fm1_input_init();
     fm1_adc_init();
+#if BOARD_SMK37
+    smk_trim_init();                                /* the factory key / pad velocity curves (USRTRIM, read only) */
+#endif
     panel_init();
     led_pos_init();
     en_init();
@@ -287,7 +298,7 @@ static void fm1_main(void)
     fm1_guard_lock_top();
     fm1_irq_enable_all();
     fm1_delay_ms(30);
-    if ((fm1_in.buttons & 3u) == 3u)
+    if ((fm1_in.buttons & FM1_OCT_BOTH) == FM1_OCT_BOTH)
         panel_setup();                              /* OCT- + OCT+ held at power-on */
     fm1_delay_ms(400);
     ui_init();
@@ -345,6 +356,9 @@ static void fm1_main(void)
             last_frame = fm1_ms;
             en_dbg.ui_frames++;
             ui_frame();
+#if BOARD_SMK37
+            padled_flush();                         /* the pads' colours, between LCD transfers (lcd.c) */
+#endif
         } else {
             ui_input_only();
         }

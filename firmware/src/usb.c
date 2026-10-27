@@ -213,6 +213,9 @@ static const uint8_t STR1[] = {26, 3, 'R', 0, 'e', 0, 'd', 0, 't', 0, 'a', 0, 'i
 #ifdef FELUCCA_LOADER
 static const uint8_t STR2[] = {30, 3, 'F', 0, 'e', 0, 'l', 0, 'u', 0, 'c', 0, 'c', 0, 'a', 0, ' ', 0, 'U', 0, 'p', 0,
                                'd', 0, 'a', 0, 't', 0, 'e', 0};
+#elif BOARD_SMK37
+static const uint8_t STR2[] = {26, 3, 'H', 0, 'Y', 0, 'P', 0, '-', 0, '1', 0, ' ', 0, 'S', 0, 'M', 0, 'K', 0, '-', 0,
+                               '3', 0, '7', 0};   /* HYP-1 SMK-37 (the installers look for "smk" in the port name) */
 #else
 static const uint8_t STR2[] = {22, 3, 'H', 0, 'Y', 0, 'P', 0, '-', 0, '1', 0, ' ', 0, 'F', 0, 'M', 0, '-', 0, '1', 0};   /* the product: the installer finds it by its "FM-1" */
 #endif
