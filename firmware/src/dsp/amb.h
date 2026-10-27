@@ -26,6 +26,9 @@
 #ifndef BOARD_SMK37
 #define BOARD_SMK37 0                  /* 1: the M-Vave SMK-37 build (tools/build.py --board smk37) */
 #endif
+#ifndef EN_FM
+#define EN_FM BOARD_SMK37              /* the FM voice and the pad's DX7 patches (fm.c): the SMK-37 build's */
+#endif
 
 #define EN_SR 44100.0f
 #define EN_NDRUM 6                     /* the drum lanes: kick, snare, clap, closed hat, open hat, perc */
@@ -38,7 +41,10 @@
                                         * and a kit (en_style_sounds); they were kits 0..4 */
 #define EN_NSOUND 16                   /* the sounds each of pad, drone and acid can play */
 #define EN_NKIT 8                      /* the sounds each drum (kick, snare + clap, hats, perc) can play */
-enum { EN_V_PAD, EN_V_DRONE, EN_V_ACID };   /* the voices the keys can play (en_note) */
+enum { EN_V_PAD, EN_V_DRONE, EN_V_ACID, EN_V_FM };   /* the voices the keys can play (en_note; the FM voice: en_fm_note) */
+#if EN_FM
+#define EN_NFMPATCH 160                /* the DX7 patches: 128 factory (A01..D32), 32 of the user's (U01..U32) */
+#endif
 
 /* modes: pools relative to the root (bit i: root + i semitones) */
 enum { MODE_IONIAN, MODE_DORIAN, MODE_PHRYGIAN, MODE_LYDIAN, MODE_MIXOLYDIAN, MODE_AEOLIAN, MODE_PENT_MAJ,
@@ -90,6 +96,14 @@ enum {
                                                            * Next, Random), when (with the chord, or every 4-64
                                                            * bars), from patterns 1..pool, a fill the bar before;
                                                            * and mutate (Off, Shift, Morph): hits move, come, go */
+#if EN_FM
+    P_FM_LVL, P_FM_PATCH, P_FM_BRIGHT, P_FM_SPACE,        /* the FM voice: level, DX7 patch, the modulators' level,
+                                                           * echo and reverb */
+    P_FM_SNAP, P_FM_MONO, P_FM_GLIDE, P_FM_VEL,           /* its keys: snapped to the scale, mono (legato), glide,
+                                                           * how much velocity counts */
+    P_FM_OCT, P_FM_KEYS,                                  /* its octave; the keys play it on every page (SEL + ENV
+                                                           * on its page; else they edit the scale as ever) */
+#endif
     P_NPARAMS
 };
 #define P_LANE_LVL(l) (P_LANE + 3 * (l))
@@ -101,6 +115,15 @@ typedef struct {
 } en_param_t;
 const en_param_t *en_param_info(int i);
 void en_param_text(int i, int v, char *buf);   /* the value as the screen shows it (10 bytes) */
+#if EN_FM
+/* the FM voice (fm.c): a key (MIDI note, before its octave), its velocity 1..127; the DX7 patches' names */
+void en_fm_note(int note, int vel, int on);
+void en_fm_code(int patch, char *buf);         /* "A01" .. "D32", "U01" .. "U32" (4 bytes) */
+void en_fm_name(int patch, char *buf);         /* the patch's own name (11 bytes), "EMPTY" */
+void en_fm_user(const uint8_t *bank);          /* the user bank: 32 packed 128-byte voices, or 0 */
+int en_fm_bulk_ok(const uint8_t *sx, uint32_t n, const uint8_t **data);   /* a DX7 32-voice dump, checked */
+extern volatile float en_fm_level;             /* its meter */
+#endif
 
 /* commands (main loop -> render) */
 void en_init(void);

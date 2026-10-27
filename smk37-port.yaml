@@ -96,6 +96,16 @@ screen:
     - same colours and same places on screen and panel (pads = picker tiles, drums colour = hits)
     - no hidden modes; play first, few menus
 
+fm:                             # the owner's addition (2026-10-27): a DX7-style FM voice, the SMK-37 build only (EN_FM)
+  engine: msfa (Dexed) via Felucca fm6_core.c, integer, Apache-2.0
+  patches: [M-VAVE factory 128 (dx7_factory.inc, Apache-2.0), user bank U01-U32 by SysEx]
+  role: [a playable voice (6 notes, mono + glide, velocity, snap), the pad's Sound past 15]
+  pages: "PATCH x2 FM (Level, Patch, Bright, Space); PATCH x3 FM keys (Snap, Mono, Glide, Velocity)"
+  keys: "SCALE + CHORD on an FM page: the keys play FM on every page (KEYS:FM in the header), again: the scale"
+  midi: channel 2 in and out
+  storage: "OBJ_FMU0 0xA1000/0xA2000, OBJ_FMU1 0xA3000/0xA4000 (the store window, below the owner tag)"
+  fm1_build: unchanged (EN_FM 0; byte-identical)
+
 pedal: none
 
 open_questions:
@@ -103,3 +113,5 @@ open_questions:
   - pad pressure (aftertouch): the community layer reads hits only; M-VAVE's smk37_open scan.c reads pressure
   - velocity on the hand-played voices (en_note has no level)
   - the remote (SCALE + GLOBE) does not send the SMK's extra controls
+  - the FM voice's CPU on the device (host +20 % worst case): measure with GLOBE held, lower FM_NHAND if needed
+  - more than one user bank, single-voice SysEx (Dexed's edit buffer)

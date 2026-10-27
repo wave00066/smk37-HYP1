@@ -1,0 +1,127 @@
+# The FM voice (EN_FM, the SMK-37 build): its pages after Tempo (HOME again), the keys playing it on every page
+# (SEL + ENV on its page), velocity, Snap, mono, MIDI channel 2, the pad singing a DX7 patch, a DX7 bank in
+# over SysEx (U01..U32), stored and back after a power cycle. Needs build/syx/bankD.syx and bad.syx
+# (tools/dx7_bank.py; tests/run_tests.sh makes them)
+wait 500
+expect playing 1
+expect pool 0x5AD
+# HOME again: the FM page (Level, Patch, Bright, Space), then FM keys
+tap HOME
+expect view 1
+expect par99 0
+wait 200
+shot fm_page.png
+padsfile fm_page.pads
+# the keys are the scale's until SEL + ENV (SCALE + CHORD) on its page
+tapkey 1
+expect pool 0x7AD
+tapkey 1
+expect pool 0x5AD
+press SEL
+tap ENV
+release SEL
+expect par107 1
+# now a key plays it, and leaves the scale alone; on any page
+tap LFO
+keyvel 110
+wav fm_keys.wav
+key w4 down
+wait 400
+expect pool 0x5AD
+expect fmlevel >3
+expect lastfm 0x913C6E
+key w4 up
+wait 300
+key w2 down
+key w4 down
+key w6 down
+wait 1200
+shot fm_chord.png
+key w2 up
+key w4 up
+key w6 up
+wait 1500
+# another patch: PATCH turned to A03 SYN LEAD 1 (K2 on the FM page)
+tap HOME
+tap HOME
+expect view 1
+spin K2 2
+expect par99 2
+key w5 down
+wait 600
+key w5 up
+wait 800
+# FM keys page: Snap to the scale: F#3 (not in A Aeolian) sounds F3
+tap HOME
+expect view 2
+spin K1 1
+expect par102 1
+keyvel 100
+key b0 down
+wait 100
+expect lastfm 0x913564
+key b0 up
+wait 100
+expect lastfm 0x813500
+# mono with glide: a legato line
+spin K2 1
+expect par103 1
+spin K3 40
+key w0 down
+wait 300
+key w4 down
+wait 300
+key w0 up
+wait 300
+key w4 up
+wait 600
+spin K2 -1
+spin K1 -1
+wavstop
+# MIDI channel 2 plays it too
+midi 91 48 64
+wait 300
+expect fmlevel >3
+midi 81 48 00
+wait 1500
+# the pad singing a DX7 patch: Sound past the sixteen (C03 STRING 1: patch 66, Sound 82)
+tap ENV
+spin K3 81
+expect par10 82
+wav pad_dx7.wav
+wait 6000
+expect pad_level >5
+shot pad_dx7.png
+wavstop
+spin K3 -81
+# a DX7 bank over SysEx: U01..U32, stored at once (the music pauses a moment for the write)
+sysex build/syx/bad.syx
+wait 300
+expect store_writes 0
+sysex build/syx/bankD.syx
+wait 1500
+expect store_writes >0
+tap HOME
+tap HOME
+spin K2 128
+expect par99 130
+wait 200
+shot fm_user.png
+key w4 down
+wait 500
+expect fmlevel >2
+key w4 up
+wait 500
+# a power cycle: the bank is back from flash
+reboot
+wait 800
+tap HOME
+spin K2 130
+expect par99 130
+press SEL
+tap ENV
+release SEL
+key w4 down
+wait 500
+expect fmlevel >2
+key w4 up

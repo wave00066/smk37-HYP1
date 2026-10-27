@@ -60,15 +60,26 @@ static const char *const SMK_LANE3[6] = {"KCK", "SNR", "CLP", "HAT", "OPN", "PRC
 #endif
 
 /* --------------------------------------------------------------- pages --- */
+#if EN_FM                                      /* the FM voice's two pages after Tempo (HOME again, again) */
+enum { V_TEMPO, V_FM, V_FMKEYS, V_PAD, V_PADENV, V_PADLFO, V_CHORDS, V_NOISE, V_DRONE, V_DRENV, V_DRLFO, V_ACID, V_ACENV,
+       V_ACLINE, V_DRUMS, V_LINKS, V_KIT, V_DDRIFT, V_SPACE, V_GLOBAL, NDIAL, V_SEQ = NDIAL, NVIEWS };
+#define FM_VIEWS(x) x,
+#else
 enum { V_TEMPO, V_PAD, V_PADENV, V_PADLFO, V_CHORDS, V_NOISE, V_DRONE, V_DRENV, V_DRLFO, V_ACID, V_ACENV, V_ACLINE,
        V_DRUMS, V_LINKS, V_KIT, V_DDRIFT, V_SPACE, V_GLOBAL, NDIAL, V_SEQ = NDIAL, NVIEWS };
-static const char *const VIEW_NAME[NVIEWS] = {"Tempo", "Pad", "Pad env", "Pad LFO", "Chords", "Noise", "Drone", "Drone env",
+#define FM_VIEWS(x)
+#endif
+static const char *const VIEW_NAME[NVIEWS] = {"Tempo", FM_VIEWS("FM") FM_VIEWS("FM keys") "Pad", "Pad env", "Pad LFO", "Chords", "Noise", "Drone", "Drone env",
                                               "Drone LFO", "Acid", "Acid env", "Acid line", "Drums", "Links", "Kit", "Drum drift", "Space", "Global",
                                               "Sequencer"};
 /* the knobs of each page: a parameter, or one of these (the sequencer's: the lane's) */
 enum { K_LVL = 200, K_TUNE, K_DEC, K_NONE };
 static const uint8_t VIEW_KNOB[NVIEWS][4] = {
     {P_TEMPO, P_EVOLVE, P_MOTION, P_DRIFT},
+#if EN_FM
+    {P_FM_LVL, P_FM_PATCH, P_FM_BRIGHT, P_FM_SPACE},
+    {P_FM_SNAP, P_FM_MONO, P_FM_GLIDE, P_FM_VEL},
+#endif
     {P_PAD, P_BRIGHT, P_PADTONE, P_DETUNE},
     {P_PE_ATK, P_PE_HOLD, P_PE_REL, P_PE_REST},
     {P_PL_RATE, P_PL_DEPTH, P_PL_SHAPE, P_PL_DEST},
@@ -90,6 +101,10 @@ static const uint8_t VIEW_KNOB[NVIEWS][4] = {
 };
 static const char *const KNOB_LABEL[NVIEWS][4] = {
     {"Tempo", "Evolve", "Motion", "Drift"},
+#if EN_FM
+    {"Level", "Patch", "Bright", "Space"},
+    {"Snap", "Mono", "Glide", "Velocity"},
+#endif
     {"Level", "Bright", "Sound", "Detune"},
     {"Attack", "Hold", "Release", "Rest"},
     {"Rate", "Depth", "Shape", "Target"},
@@ -113,7 +128,12 @@ static const char *const KNOB_LABEL[NVIEWS][4] = {
 static const struct {
     uint8_t btn, first, n;
 } GROUP[] = {
-    {B_HOME, V_TEMPO, 1}, {B_ENV, V_PAD, 4}, {B_LFO, V_DRONE, 3}, {B_ARP, V_ACID, 3}, {B_SEQ, V_DRUMS, 4}, {B_GLO, V_GLOBAL, 1},
+#if EN_FM
+    {B_HOME, V_TEMPO, 3}, {B_ENV, V_PAD, 4},
+#else
+    {B_HOME, V_TEMPO, 1}, {B_ENV, V_PAD, 4},
+#endif
+    {B_LFO, V_DRONE, 3}, {B_ARP, V_ACID, 3}, {B_SEQ, V_DRUMS, 4}, {B_GLO, V_GLOBAL, 1},
 };
 #define NGROUP (int)(sizeof GROUP / sizeof GROUP[0])
 
@@ -216,6 +236,10 @@ static struct {
     uint8_t piece_q;                   /* a piece waiting for the bar (SEL + PRESETS): its number + 1 */
     uint8_t shift_hint;                /* SEL held alone: its hint shown this hold */
     uint8_t key_voice[NKEYS];          /* a key playing a voice: its EN_V_* + 1 (the note-off goes there) */
+#if EN_FM
+    uint8_t key_note[NKEYS + 10];      /* the FM voice: the note each key plays (snapped); 27..: the SMK's outer keys */
+    uint8_t fm_bank_pending;           /* a received DX7 bank, not yet in flash */
+#endif
     uint8_t splash, theme;             /* the boot cards are up (2: the HYP-1 card); the theme drawn */
     uint8_t splash_step;               /* the HYP-1 card's steps lit */
     uint32_t boot_t, act_t;
@@ -397,6 +421,26 @@ static void set_piece(int i)                    /* the piece playing kept as it 
     }
 }
 
+#if EN_FM
+/* the user's DX7 bank (U01..U32): received over USB as a 32-voice bulk dump, kept in two flash objects */
+static uint8_t fm_bank[4096] EN_POOL;
+static void fm_bank_load(void)
+{
+    if (plat_store_load(OBJ_FMU0, fm_bank, 2048) == 2048 && plat_store_load(OBJ_FMU1, fm_bank + 2048, 2048) == 2048)
+        en_fm_user(fm_bank);
+}
+static int fm_bank_flush(void)
+{
+    if (!ui.fm_bank_pending)
+        return 0;
+    ui.fm_bank_pending = 0;
+    return plat_store_save(OBJ_FMU0, fm_bank, 2048) | plat_store_save(OBJ_FMU1, fm_bank + 2048, 2048);
+}
+#define FLUSH_ALL() (project_flush() | fm_bank_flush())
+#else
+#define FLUSH_ALL() project_flush()
+#endif
+
 /* into flash now. Writing it stops the chip a moment (it runs from the same flash), so while the music
  * plays it fades out (en_hush), holds still while the store is written, and fades back in where it was:
  * a short pause, not a cut. Stopped: at once. */
@@ -412,7 +456,7 @@ static void store_now(const char *done)
         ui.store_t = plat_ms();
         say("STORING", 0);
     } else {
-        say(ui.store_msg, project_flush() == 0 ? 0 : "NOT WRITTEN");
+        say(ui.store_msg, FLUSH_ALL() == 0 ? 0 : "NOT WRITTEN");
     }
 }
 static void store_tick(void)                    /* the music faded out (or long enough): write, then back in */
@@ -420,7 +464,7 @@ static void store_tick(void)                    /* the music faded out (or long 
     if (!ui.store_wait || (!en_hushed && plat_ms() - ui.store_t < 150u))
         return;
     ui.store_wait = 0;
-    say(ui.store_msg, project_flush() == 0 ? 0 : "NOT WRITTEN");
+    say(ui.store_msg, FLUSH_ALL() == 0 ? 0 : "NOT WRITTEN");
     en_hush(0);
 }
 
@@ -517,6 +561,10 @@ static void set_view(int v)
 
 static int voice_of(int v)                      /* the voice page v belongs to (EN_V_*), or -1 */
 {
+#if EN_FM
+    if (v == V_FM || v == V_FMKEYS)
+        return EN_V_FM;
+#endif
     if (v >= V_PAD && v <= V_CHORDS)
         return EN_V_PAD;
     if (v >= V_DRONE && v <= V_DRLFO)
@@ -525,9 +573,62 @@ static int voice_of(int v)                      /* the voice page v belongs to (
         return EN_V_ACID;
     return -1;
 }
+#if EN_FM                                      /* the FM voice: its patch; "by hand": the keys play it everywhere */
+static const int SOUND_PAR[4] = {P_PADTONE, P_DR_INST, P_AC_WAVE, P_FM_PATCH};
+static const int HAND_PAR[4] = {P_PAD_MAN, P_DR_MAN, P_AC_MAN, P_FM_KEYS};
+static const char *const VOICE_WHO[4] = {"PAD", "DRONE", "ACID", "FM"};
+#else
 static const int SOUND_PAR[3] = {P_PADTONE, P_DR_INST, P_AC_WAVE};
 static const int HAND_PAR[3] = {P_PAD_MAN, P_DR_MAN, P_AC_MAN};   /* off the algorithm: played by hand */
+#endif
 static int by_hand(int vc) { return vc >= 0 && proj.par[HAND_PAR[vc]] != 0; }
+#if EN_FM
+#define KEY_VEL_IX(k) ((k) + 5)                 /* key k (0 = F3) on the SMK-37's keybed (0 = C3) */
+/* a voice's sound as the screen names it: the DX7 patch's own name (the pad's past its sixteen, the FM voice's) */
+static void sound_name(int vc, char *b)
+{
+    int p = SOUND_PAR[vc], v = proj.par[p];
+    if (vc == EN_V_FM)
+        en_fm_name(v, b);
+    else if (vc == EN_V_PAD && v >= EN_NSOUND)
+        en_fm_name(v - EN_NSOUND, b);
+    else
+        en_param_text(p, v, b);
+}
+/* where the keys' notes go now: a voice played by hand on its own pages; else the FM voice when it has the keys
+ * (on every page); else none (-1: the keys edit the scale) */
+static int key_voice_now(void)
+{
+    int vc = voice_of(ui.view);
+    if (vc >= 0 && vc != EN_V_FM && by_hand(vc))
+        return vc;
+    return proj.par[P_FM_KEYS] ? EN_V_FM : -1;
+}
+static int fm_snap(int n)                       /* Snap on: the nearest note of the scale (the lower on a tie) */
+{
+    uint32_t sc = pool_abs();
+    int d;
+    if (!proj.par[P_FM_SNAP] || !sc)
+        return n;
+    for (d = 0; d < 7; d++) {
+        if (sc >> ((n - d + 120) % 12) & 1u)
+            return n - d;
+        if (sc >> ((n + d) % 12) & 1u)
+            return n + d;
+    }
+    return n;
+}
+static void voice_key(int vc, int k, int note, int vel, int on)   /* key k (0 = F3; the SMK's outer keys: 27..) */
+{
+    if (vc == EN_V_FM) {
+        if (on)
+            ui.key_note[k] = (uint8_t)fm_snap(note);
+        en_fm_note(ui.key_note[k], vel, on);
+    } else {
+        en_note(vc, note, on);
+    }
+}
+#endif
 static int kit_view(int v) { return v == V_DRUMS || v == V_LINKS || v == V_KIT || v == V_SEQ; }
 
 static void shift_sound(int d)                  /* SEL + ALGORITHM: the voice's next sound, or the whole kit's */
@@ -535,12 +636,21 @@ static void shift_sound(int d)                  /* SEL + ALGORITHM: the voice's 
     char a[16], b[16];
     int vc = voice_of(ui.view);
     if (vc >= 0) {
+#if EN_FM
+        int p = SOUND_PAR[vc], lo, hi;
+        knob_range(p, &lo, &hi);
+        knob_set(p, (proj.par[p] + d + hi + 1) % (hi + 1));
+        sound_name(vc, b);
+        caps(a, b, sizeof a);
+        say(VOICE_WHO[vc], a);
+#else
         static const char *const WHO[3] = {"PAD", "DRONE", "ACID"};
         int p = SOUND_PAR[vc];
         knob_set(p, (proj.par[p] + d + EN_NSOUND) % EN_NSOUND);
         en_param_text(p, proj.par[p], b);
         caps(a, b, sizeof a);
         say(WHO[vc], a);
+#endif
     } else if (kit_view(ui.view)) {             /* the drums: all four to the next kit */
         int k = (proj.par[P_KIT_KICK] + d + EN_NKIT) % EN_NKIT;
         knob_set(P_KIT_KICK, k);
@@ -556,6 +666,10 @@ static void shift_sound(int d)                  /* SEL + ALGORITHM: the voice's 
 
 static int oct_par(int v)                       /* what OCT moves on page v */
 {
+#if EN_FM
+    if (v == V_FM || v == V_FMKEYS)
+        return P_FM_OCT;
+#endif
     if (v >= V_PAD && v <= V_CHORDS)
         return P_PAD_OCT;
     if (v >= V_DRONE && v <= V_DRLFO)
@@ -618,7 +732,12 @@ static void button(int b)
             char t[8];
             knob_set(p, proj.par[p] + (b == B_OCTUP ? 1 : -1));
             en_param_text(p, proj.par[p], t);
+#if EN_FM
+            say(p == P_PAD_OCT ? "PAD OCTAVE" : p == P_BASSOCT ? "DRONE OCTAVE" : p == P_AC_OCT ? "ACID OCTAVE" :
+                p == P_FM_OCT ? "FM OCTAVE" : "SONG OCTAVE", t);
+#else
             say(p == P_PAD_OCT ? "PAD OCTAVE" : p == P_BASSOCT ? "DRONE OCTAVE" : p == P_AC_OCT ? "ACID OCTAVE" : "SONG OCTAVE", t);
+#endif
         }
         break;
     case B_SAVE:                                 /* nothing is saved by it: SAVE is the breakdown (and the build) */
@@ -642,15 +761,49 @@ static void button(int b)
 
 /* MIDI in (USB and the TRS jack): channel 1 notes add or remove their note from the scale; clock and
  * start / stop drive the grid */
+#if EN_FM
+static void fm_sysex_poll(void)                 /* a DX7 32-voice bank came in: U01..U32, played and stored */
+{
+    uint32_t n, i;
+    const uint8_t *sx = plat_sysex_peek(&n), *d;
+    char nm[12], t[24] = "U01 ";
+    if (!n)
+        return;
+    if (!en_fm_bulk_ok(sx, n, &d)) {
+        plat_sysex_done();
+        say("SYSEX", "NOT A DX7 BANK");
+        return;
+    }
+    for (i = 0; i < 4096u; i++)
+        fm_bank[i] = d[i];
+    plat_sysex_done();
+    en_fm_user(fm_bank);
+    ui.fm_bank_pending = 1;
+    en_fm_name(EN_NFMPATCH - 32, nm);
+    for (i = 0; nm[i] && i < 10u; i++)
+        t[4 + i] = nm[i];
+    t[4 + i] = 0;
+    say("DX7 BANK IN", t);
+    store_now("BANK U STORED");
+}
+#endif
+
 static void midi_in(void)
 {
     uint32_t pkt;
+#if EN_FM
+    fm_sysex_poll();
+#endif
     while (plat_midi_in(&pkt)) {
         uint32_t st = (pkt >> 8) & 0xFFu, n = (pkt >> 16) & 0x7Fu, v = pkt >> 24;
         if (st == 0xF8u || st == 0xFAu || st == 0xFBu || st == 0xFCu)
             en_clock(st == 0xF8u ? EN_CLK_TICK : st == 0xFAu ? EN_CLK_START : st == 0xFBu ? EN_CLK_CONTINUE : EN_CLK_STOP);
         else if (st == 0x90u && v)
             toggle_note((int)(n % 12u));
+#if EN_FM
+        else if (st == 0x91u || st == 0x81u)   /* channel 2: the FM voice */
+            en_fm_note((int)n, (int)(v ? v : 64u), st == 0x91u && v);
+#endif
     }
 }
 
@@ -897,6 +1050,24 @@ static void input(void)
             if (i == B_ENV && (btn >> B_SEL & 1u)) {
                 /* shift: the voice whose page is on screen off the algorithm (silent but for the keys on its
                  * pages), or back on it */
+#if EN_FM
+                int vc = voice_of(ui.view), k;
+                if (vc < 0) {
+                    say("BY HAND", "ON A VOICE'S PAGE");
+                } else {
+                    knob_set(HAND_PAR[vc], !proj.par[HAND_PAR[vc]]);
+                    if (!proj.par[HAND_PAR[vc]]) /* back on the algorithm (FM: the keys back to the scale) */
+                        for (k = 0; k < NKEYS; k++)
+                            if (ui.key_voice[k] == vc + 1) {
+                                voice_key(vc, k, 53 + k, 0, 0);
+                                ui.key_voice[k] = 0;
+                            }
+                    if (vc == EN_V_FM)
+                        say("FM", proj.par[P_FM_KEYS] ? "KEYS PLAY IT, EVERY PAGE" : "KEYS: THE SCALE AGAIN");
+                    else
+                        say(VOICE_WHO[vc], proj.par[HAND_PAR[vc]] ? "BY HAND: PLAY THE KEYS" : "BACK WITH THE MUSIC");
+                }
+#else
                 static const char *const WHO[3] = {"PAD", "DRONE", "ACID"};
                 int vc = voice_of(ui.view), k;
                 if (vc < 0) {
@@ -911,6 +1082,7 @@ static void input(void)
                             }
                     say(WHO[vc], proj.par[HAND_PAR[vc]] ? "BY HAND: PLAY THE KEYS" : "BACK WITH THE MUSIC");
                 }
+#endif
                 ui.btn_used |= m | 1u << B_SEL;
             }
             if (i == B_SEQ && (btn >> B_SEL & 1u)) {   /* shift: the links on and off */
@@ -994,16 +1166,27 @@ static void input(void)
                     for (s = 0; s < 16; s++)
                         if (WHITE_KEY[s] == i)
                             step_toggle(s);
+#if EN_FM
+                } else if (key_voice_now() >= 0) {   /* a voice by hand on its page, or the FM voice: the key plays it */
+                    int vc = key_voice_now();
+                    ui.key_voice[i] = (uint8_t)(vc + 1);
+                    voice_key(vc, (int)i, 53 + (int)i, plat_key_vel(KEY_VEL_IX((int)i)), 1);
+#else
                 } else if (by_hand(voice_of(ui.view))) {   /* a voice off the algorithm, its page: the key plays it */
                     ui.key_voice[i] = (uint8_t)(voice_of(ui.view) + 1);
                     en_note(voice_of(ui.view), 53 + (int)i, 1);
+#endif
                 } else {
                     toggle_note((int)((5u + i) % 12u));   /* key 0 is F3 */
                 }
             }
     for (i = 0; i < NKEYS; i++)                  /* let go: its note off, wherever it went */
         if (ui.key_voice[i] && !(keys >> i & 1u)) {
+#if EN_FM
+            voice_key(ui.key_voice[i] - 1, (int)i, 53 + (int)i, 0, 0);
+#else
             en_note(ui.key_voice[i] - 1, 53 + (int)i, 0);
+#endif
             ui.key_voice[i] = 0;
         }
     if (btn || keys || ch)
@@ -1284,6 +1467,9 @@ static void draw_header(void)
                                (uint32_t)en_ext << 6 | (uint32_t)proj.par[P_MODE] << 12 | (uint32_t)project_pending() << 16 |
                                (uint32_t)(proj.edited >> proj.piece & 1u) << 17),
                       (uint32_t)proj.par[P_TEMPO] | (uint32_t)ui.theme << 8 | (uint32_t)(ui.fx_lock != 0) << 12);
+#if EN_FM
+    h = hash(h, (uint32_t)proj.par[P_FM_KEYS]);
+#endif
     if (msg)
         h = hash(hash(h, (uint32_t)ui.msg[0][0] << 8 | ui.msg[0][1]), ui.msg_until);
 #if BOARD_SMK37
@@ -1322,6 +1508,13 @@ static void draw_header(void)
             cv_text(x, 8, &FONT_XS, "FX", K_PAD);
             x -= 10;
         }
+#if EN_FM
+        if (proj.par[P_FM_KEYS]) {                /* the keys play the FM voice */
+            x -= text_w(&FONT_XS, "KEYS:FM");
+            cv_text(x, 8, &FONT_XS, "KEYS:FM", K_BASS);
+            x -= 10;
+        }
+#endif
 #if BOARD_SMK37
         {   /* the wheels off rest: what they do now (they are never stored) */
             int w = smk_wheels_off();
@@ -1428,6 +1621,32 @@ static void draw_ring(void)
     }
 }
 
+#if EN_FM
+static void draw_meters(void)                    /* left: the six layers (F: the FM voice) */
+{
+    static const char *const L[6] = {"P", "N", "D", "A", "F", "K"};
+    uint16_t c[6], t[6];
+    float lv[6], dm = 0.0f;
+    int i;
+    c[0] = K_PAD, c[1] = K_DIM, c[2] = K_BASS, c[3] = K_ACID, c[4] = K_TEXT, c[5] = K_PULSE;
+    t[0] = K_PAD_T, t[1] = K_LINE, t[2] = K_BASS_T, t[3] = K_ACID_T, t[4] = K_LINE, t[5] = K_PULSE_T;
+    for (i = 0; i < EN_NDRUM; i++)
+        dm = fm_maxf(dm, en_drum_glow[i]);
+    lv[0] = en_pad_level * (float)proj.par[P_PAD] * 0.01f;
+    lv[1] = en_noise_level;
+    lv[2] = en_bass_level * (float)proj.par[P_BASS] * 0.01f;
+    lv[3] = en_acid_level * (float)proj.par[P_ACID] * 0.01f;
+    lv[4] = en_fm_level * (float)proj.par[P_FM_LVL] * 0.01f;
+    lv[5] = dm * (float)proj.par[P_PULSE] * 0.01f;
+    for (i = 0; i < 6; i++) {
+        int32_t x = 5 + i * 8, h = (int32_t)(fm_clampf(lv[i], 0.0f, 1.0f) * 92.0f + 0.5f);
+        cv_rect(x, 20, 5, 96, t[i]);
+        if (h > 0)
+            cv_rect(x, 20 + 96 - h, 5, h, c[i]);
+        cv_text(x, 120, &FONT_XS, L[i], K_DIM);
+    }
+}
+#else
 static void draw_meters(void)                    /* left: the five layers */
 {
     static const char *const L[5] = {"P", "N", "D", "A", "K"};
@@ -1451,6 +1670,7 @@ static void draw_meters(void)                    /* left: the five layers */
         cv_text(x, 120, &FONT_XS, L[i], K_DIM);
     }
 }
+#endif
 
 static void draw_kit(void)                       /* right: the pattern playing, small */
 {
@@ -1538,7 +1758,11 @@ static int help_lines(int b, const char *l[HELP_LINES])
     int n = 0;
 #define L(t) (l[n++] = (t))
     switch (b) {
+#if EN_FM
+    case B_HOME: L("TEMPO; AGAIN: THE FM VOICE,"); L("AGAIN: ITS KEYS"); L("+ " NM_SELECT ": TEMPO"); L(NM_SEL "+" NM_ENV ": KEYS PLAY FM"); break;
+#else
     case B_HOME: L("TEMPO"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ " NM_SELECT ": TEMPO"); break;
+#endif
     case B_ENV: L("PAD; AGAIN: ENV, LFO,"); L("THEN THE CHORDS"); L(NM_SEL " + " NM_ENV " ON A VOICE'S"); L("PAGE: PLAY IT BY HAND"); break;
     case B_ARP: L("THE ACID; AGAIN: ITS"); L("ENVELOPE, THEN THE LINE"); L(NM_SEL " + " NM_ENV ": BY HAND"); L(NM_SEL " + " NM_ALGO ": ITS SOUND"); break;
     case B_LFO: L("THE DRONE; AGAIN: ITS"); L("ENVELOPE, THEN ITS LFO"); L(NM_SEL " + " NM_ENV ": BY HAND"); L(NM_SEL " + " NM_ALGO ": ITS SOUND"); break;
@@ -1701,6 +1925,9 @@ static void draw_knobs(void)
     h = hash(h, (uint32_t)proj.par[P_PADTONE] | (uint32_t)proj.par[P_DR_INST] << 3 | (uint32_t)proj.par[P_AC_WAVE] << 6 |
                 (uint32_t)(proj.par[P_KIT_KICK] | proj.par[P_KIT_SNARE] << 3 | proj.par[P_KIT_HAT] << 6) << 9 |
                 (uint32_t)proj.par[P_KIT_PERC] << 18);
+#if EN_FM
+    h = hash(h, (uint32_t)proj.par[P_FM_PATCH] | (uint32_t)proj.par[P_FM_KEYS] << 8 | (uint32_t)proj.par[P_PADTONE] << 9);
+#endif
     h = hash(h, (uint32_t)(proj.par[P_PAD_MAN] | proj.par[P_DR_MAN] << 1 | proj.par[P_AC_MAN] << 2) << 24 |
                 (uint32_t)proj.par[P_LINKS] << 8 |
                     (uint32_t)(proj.par[oct_par(ui.view)] + 8) << 12);
@@ -1752,7 +1979,11 @@ static void draw_knobs(void)
             int32_t xs;
             int vc = voice_of(ui.view);
             if (vc >= 0) {
+#if EN_FM
+                sound_name(vc, t);
+#else
                 en_param_text(SOUND_PAR[vc], proj.par[SOUND_PAR[vc]], t);
+#endif
                 caps(u, t, sizeof u);
             } else if (kit_view(ui.view)) {
                 int k = proj.par[P_KIT_KICK];
@@ -1762,6 +1993,12 @@ static void draw_knobs(void)
                 caps(u, "HYP-1", sizeof u);
             }
             xs = cv_text(4, -1, &FONT_XS, u, K_DIM);
+#if EN_FM
+            if (vc == EN_V_FM) {                 /* the FM voice: the keys play it (the header says KEYS:FM too) */
+                if (proj.par[P_FM_KEYS] && xs + 5 + text_w(&FONT_XS, "KEYS") < xt - 8)
+                    xs = cv_text(xs + 5, -1, &FONT_XS, "KEYS", K_ACC);
+            } else
+#endif
             if (by_hand(vc))                     /* the voice off the algorithm: said beside its sound */
                 xs = cv_text(xs + 5, -1, &FONT_XS, "BY HAND", K_ACC);
             else if (proj.par[P_LINKS])          /* the links on: said beside it */
@@ -2008,6 +2245,9 @@ void ui_init(void)
     ui.touched = -1;
 #if BOARD_SMK37
     smk_reset();
+#endif
+#if EN_FM
+    fm_bank_load();                              /* the user's DX7 bank, if one was stored */
 #endif
     ui.boot_t = plat_ms();
     ui.theme = (uint8_t)proj.par[P_THEME];

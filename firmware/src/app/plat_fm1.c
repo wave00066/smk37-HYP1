@@ -156,6 +156,49 @@ int plat_wheels(int32_t *pitch, int32_t *modw)
     return 1;
 }
 
+#if EN_FM
+/* the keys' velocity (the FM voice): keybed key 0..36 (C3..C6), from the unit's factory curves */
+int plat_key_vel(int key)
+{
+    uint32_t v = (uint32_t)key < SMK_NKEYBED ? fm1_in.key_vel[key] : 0u;
+    return v ? (int)v : 100;
+}
+
+/* a Yamaha SysEx dump (F0 43 ..: a DX7 32-voice bank is 4104 bytes), gathered byte by byte in the USB interrupt
+ * (usb.c sysex_byte), handed to the main loop whole (plat_sysex_take); one at a time, a second waits for it */
+static uint8_t sx_big[4104] EN_POOL;
+static volatile uint32_t sx_big_n;
+static volatile uint8_t sx_big_on, sx_big_ready;
+static void app_sysex_byte(uint8_t b)
+{
+    if (b == 0xF0u) {
+        sx_big_on = !sx_big_ready;
+        sx_big_n = 0;
+    }
+    if (!sx_big_on)
+        return;
+    if (sx_big_n == 1u && b != 0x43u) {        /* not Yamaha's: not ours (M-UPGRADE, the remote) */
+        sx_big_on = 0;
+        return;
+    }
+    if (sx_big_n >= sizeof sx_big) {
+        sx_big_on = 0;                         /* too long */
+        return;
+    }
+    sx_big[sx_big_n++] = b;
+    if (b == 0xF7u) {
+        sx_big_on = 0;
+        sx_big_ready = 1;
+    }
+}
+const uint8_t *plat_sysex_peek(uint32_t *n)
+{
+    *n = sx_big_ready ? sx_big_n : 0u;
+    return sx_big;
+}
+void plat_sysex_done(void) { sx_big_ready = 0; }
+#endif
+
 /* the factory velocity curves of the keys and pads: USRTRIM (flash 0xC1000, "trimdat" at +0x224), read only,
  * over the SPI read (no XIP window needed); smk_trim_load ignores a record that does not check out */
 static uint8_t smk_trim_buf[0x22Cu] __attribute__((aligned(4)));

@@ -578,9 +578,15 @@ stall:
 }
 
 /* SysEx assembly: only short commands matter here */
+#if EN_FM && !defined(FELUCCA_LOADER)
+static void app_sysex_byte(uint8_t b);         /* plat_fm1.c: a long dump for the app (a DX7 voice bank) */
+#endif
 static void sysex_byte(uint8_t b)
 {
     static const uint8_t UBOOT_KEY[6] = {0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7};
+#if EN_FM && !defined(FELUCCA_LOADER)
+    app_sysex_byte(b);
+#endif
     if (b == 0xF0) {
         usb.sx_on = 1;
         usb.sx_len = 0;

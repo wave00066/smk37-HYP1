@@ -105,6 +105,11 @@ int main(void)
     check("storage.c: project 0x9D000/0x9E000, panel 0x9F000/0xA0000, owner tag 0xAF000",
           st_sector(OBJ_PROJ, 0) == 0x9D000u && st_sector(OBJ_PROJ, 1) == 0x9E000u &&
           st_sector(OBJ_PANEL, 0) == 0x9F000u && st_sector(OBJ_PANEL, 1) == 0xA0000u && ST_OWNER_OFF == 0xAF000u);
+#if EN_FM
+    check("storage.c: the user's DX7 bank 0xA1000/0xA2000 (U01-16), 0xA3000/0xA4000 (U17-32)",
+          st_sector(OBJ_FMU0, 0) == 0xA1000u && st_sector(OBJ_FMU0, 1) == 0xA2000u &&
+          st_sector(OBJ_FMU1, 0) == 0xA3000u && st_sector(OBJ_FMU1, 1) == 0xA4000u);
+#endif
     check("FL_PLAIN_LO = the VM start 0x9D000", FL_PLAIN_LO == 0x9D000u);
     check("FL_JEDEC_OK: the SMK part 0xEB6014 and 0x856014 only", FL_JEDEC_OK(0xEB6014u) && FL_JEDEC_OK(0x856014u) &&
           !FL_JEDEC_OK(0u) && !FL_JEDEC_OK(0xFFFFFFu) && !FL_JEDEC_OK(0xEB6015u));

@@ -76,8 +76,11 @@ for s in tests/scenarios/*.amb; do
     mkdir -p "build/scenarios/$n"
     run "scenario-$n" build/host/amb_host "$s" "build/scenarios/$n"
 done
-# the SMK-37 build's UI in the simulator: its keys, pads, faders, wheels and extra buttons
+# the SMK-37 build's UI in the simulator: its keys, pads, faders, wheels and extra buttons; the FM voice (fm.amb)
+# with a DX7 bank to send it (and a broken one it must refuse)
 run host-build-smk37 sh host/build_host.sh smk37
+run dx7-banks sh -c "mkdir -p build/syx && python3 tools/dx7_bank.py factory D build/syx/bankD.syx && \
+    python3 -c \"d=bytearray(open('build/syx/bankD.syx','rb').read()); d[100]^=1; open('build/syx/bad.syx','wb').write(d)\""
 for s in tests/scenarios/smk37/*.amb; do
     n=$(basename "$s" .amb)
     mkdir -p "build/scenarios/smk37-$n"

@@ -32,6 +32,9 @@
  *   wheel pitch|mod V            pitch -127..127, mod 0..127
  *   pads                         print the pads' colours
  *   padsfile FILE                write the pads' colours and the extra buttons' lights (for the panel pictures)
+ * With the FM voice (EN_FM, the SMK-37 build):
+ *   keyvel V                     the velocity of the keys pressed from now on (1..127; 100 at first)
+ *   sysex FILE                   a SysEx dump arriving over USB (a .syx file: a DX7 32-voice bank)
  */
 #define EN_HOST 1
 #include <stdio.h>
@@ -88,6 +91,18 @@ void plat_leds(uint32_t b, uint32_t k)
     lit_btn = b;
     lit_keys = k;
 }
+#if EN_FM
+static int key_vel_v = 100;
+static uint8_t sx_buf[8192];
+static uint32_t sx_n;
+int plat_key_vel(int key) { (void)key; return key_vel_v; }
+const uint8_t *plat_sysex_peek(uint32_t *n)
+{
+    *n = sx_n;
+    return sx_buf;
+}
+void plat_sysex_done(void) { sx_n = 0; }
+#endif
 #if BOARD_SMK37
 float en_host_pmul(void);
 float en_host_pcut(void);
@@ -140,7 +155,7 @@ void plat_play_red(int red) { (void)red; }      /* the device's PLAY colour: gre
 #define MQ 256
 static uint32_t min_q[MQ], mi_w, mi_r;
 static FILE *midi_log;
-static uint32_t last_out;                        /* the last packet out, not clock: status << 16 | d1 << 8 | d2 */
+static uint32_t last_out, last_fm;            /* last_fm: the last on channel 2 (the FM voice) */                        /* the last packet out, not clock: status << 16 | d1 << 8 | d2 */
 static uint32_t midi_out_count, clock_out_count;
 int plat_midi_in(uint32_t *pkt)
 {
@@ -154,6 +169,8 @@ void plat_midi_out(uint32_t pkt)
     midi_out_count++;
     if (((pkt >> 8) & 0xFF) != 0xF8)
         last_out = (pkt >> 8 & 0xFFu) << 16 | (pkt >> 16 & 0xFFu) << 8 | pkt >> 24;
+    if (((pkt >> 8) & 0x0F) == 1u)                 /* channel 2: the FM voice */
+        last_fm = (pkt >> 8 & 0xFFu) << 16 | (pkt >> 16 & 0xFFu) << 8 | pkt >> 24;
     if (((pkt >> 8) & 0xFF) == 0xF8) {
         clock_out_count++;
         return;
@@ -477,6 +494,10 @@ static int expect(const char *what, const char *val)
         got = pad_rgb[atoi(what + 4) & 15][1];
     else if (!strncmp(what, "padb", 4))
         got = pad_rgb[atoi(what + 4) & 15][2];
+#if EN_FM
+    else if (!strcmp(what, "fmlevel"))            /* the FM voice's meter, x100 */
+        got = (int)(en_fm_level * 100.0f + 0.5f);
+#endif
     else if (!strcmp(what, "pmul1000"))           /* the engine's pitch factor, x1000 */
         got = (int)(en_host_pmul() * 1000.0f + 0.5f);
     else if (!strcmp(what, "pcut100"))            /* the filter macro, x100 */
@@ -581,6 +602,8 @@ static int expect(const char *what, const char *val)
         got = rm.link;
     else if (!strcmp(what, "lastout"))            /* the last MIDI out: status << 16 | d1 << 8 | d2 */
         got = (int)last_out;
+    else if (!strcmp(what, "lastfm"))             /* the last on channel 2 (the FM voice), the same way */
+        got = (int)last_fm;
     else if (!strcmp(what, "litbtn"))             /* the buttons lit (bit b: B_*) */
         got = (int)lit_btn;
     else if (!strcmp(what, "litkeys"))            /* the keys lit (bit k: key k) */
@@ -736,6 +759,19 @@ int main(int argc, char **argv)
             for (i = 0; i < SMK_NPADS; i++)
                 printf("%s%3d,%3d,%3d%s", i % 8 ? " " : "  pads: ", pad_rgb[i][0], pad_rgb[i][1], pad_rgb[i][2],
                        i % 8 == 7 ? "\n" : "");
+#if EN_FM
+        } else if (!strcmp(cmd, "keyvel")) {
+            key_vel_v = atoi(a);
+        } else if (!strcmp(cmd, "sysex")) {
+            FILE *sf = fopen(a, "rb");
+            if (!sf) {
+                printf("line %d: no file %s\n", lineno, a);
+                return 2;
+            }
+            sx_n = (uint32_t)fread(sx_buf, 1, sizeof sx_buf, sf);
+            fclose(sf);
+            run_ms(40);
+#endif
         } else if (!strcmp(cmd, "padsfile")) {
             FILE *pf;
             int i;

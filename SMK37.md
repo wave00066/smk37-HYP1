@@ -4,7 +4,8 @@ HYP-1 also builds for the M-Vave SMK-37 keyboards (SMK-37 Elite, SMK-37 Pro, MKE
 FM-1 (JieLi AC791N), a different panel. It is the same HYP-1: the same pieces, pages, sounds, screen and
 [field manual](docs/HYP-1_Manual.pdf). The SMK-37's extra controls go to what the FM-1 makes you hold a
 button for: the drum steps are always on the pads, the acid is on the faders, and the wheels bend and open
-the filters. The FM-1 build is unchanged (byte for byte); everything for the SMK-37 is behind `BOARD_SMK37`.
+the filters. And it has a sixth voice the FM-1 build has not: a DX7-style FM synth with the 128 factory
+patches of the SMK-37, played on the 37 keys over the groove; the pad can sing those patches too. The FM-1 build is unchanged (byte for byte); everything for the SMK-37 is behind `BOARD_SMK37`.
 
 ## Models and packages
 
@@ -33,11 +34,11 @@ cards and hints use the SMK-37's printed names (for example **BT (SAVE)**, **SCA
 | 10 / 11 | OCTAVE- / OCTAVE+ | OCT- / OCT+ | the octave of the page's voice, or the song's; in the sequencer, the drum |
 | 12 | FX | FX | the effects menu (the keys are effects while it is on) |
 | 13 | SCALE | SEL | shift, held |
-| 14 | CHORD | ENV | the pad's pages; SCALE + CHORD on a voice's page: that voice by hand |
+| 14 | CHORD | ENV | the pad's pages; SCALE + CHORD on a voice's page: that voice by hand (on the FM pages: the keys play FM on every page) |
 | 15 | NOTE REPEAT | LFO | the drone's pages |
 | 16 | PARA | EDIT | the next chord, on the bar |
 | 17 | GLOBE | GLO | Global (root, theme, tune, MIDI out); here BT stores the piece |
-| 18 | PATCH | HOME | the Tempo page; held + K2: the tempo |
+| 18 | PATCH | HOME | the Tempo page; again: the FM voice, again: its keys page; held + K2: the tempo |
 | 19 | BT | SAVE | breakdown, build, drop; on Global: store (held 1.5 s: factory); in FX, held: lock |
 | 20 | ARP | ARP | the acid's pages |
 | 21 | SEQ | SEQ | drums, links, kit, drum drift; held: the sequencer page |
@@ -82,9 +83,49 @@ A fader takes over only once it moves, also after a bank change, so nothing jump
 banks as tabs, four faders, the one moved in orange) shows while you move them. One card at a time:
 KNOB BANK closes the fader card, FADER BANK the picker. The values are the pages' own: stored with the piece.
 
+### The FM voice (DX7)
+
+A 6-operator FM synth after the DX7: msfa, the core of Dexed, as Felucca ported it to integers. Its patches are
+the 128 factory voices of the SMK-37 and the FM-1 (banks A-D: pianos, organs, leads, pads, guitars, basses, brass,
+strings, voices, bells and percussion), and a bank of 32 of your own (U01-U32, below).
+
+| Page | Reach it | a (K5) | b (K6) | c (K7) | d (K8) |
+| --- | --- | --- | --- | --- | --- |
+| FM | PATCH x2 | Level | Patch (A01-D32, U01-U32; the name on the line above) | Bright (the modulators: duller, brighter) | Space (echo and reverb) |
+| FM keys | PATCH x3 | Snap (Off / Scale: each key to the scale's nearest note) | Mono (Poly, 6 notes / Mono, legato) | Glide | Velocity (how much it counts) |
+
+- **Play it:** on an FM page, SCALE + CHORD. From then on the keys (all 37, with velocity) play the FM voice on
+  every page, over the groove; the header says **KEYS:FM**. SCALE + CHORD on an FM page again: the keys edit the
+  scale again. On a page of a voice played by hand (pad, drone, acid), the keys play that voice instead.
+- **OCTAVE- / +** on the FM pages: its octave. **SCALE + K3**: the next patch. The wheels bend it.
+- **MIDI:** channel 2 in plays it (from a DAW or another keyboard); what you play goes out on channel 2.
+- **The meter** F, between A and K on the main page.
+- **The pad in FM:** on the Pad page turn Sound (K7) past Sine: A01 ... D32, U01 ... U32. The pad's four voices
+  sing the patch: each breath (or stab, or key) is a note, so the chords still breathe; Bright moves the patch's
+  modulators. Strings, voices and pads (bank C) breathe best; the pianos and bells strike at each breath.
+
+**Your own bank (U01-U32).** Send a DX7 32-voice bank (a `.syx` file: `F0 43 0n 09 20 00`, 4104 bytes) to the
+keyboard over USB: HYP-1 checks it, says **DX7 BANK IN** with its first voice's name, and stores it at once (the
+music pauses a moment while it is written, as a piece's store does). It stays after a power cycle; the next bank
+replaces it. A file that is not a good DX7 bank is refused (**NOT A DX7 BANK**) and nothing is written.
+
+```sh
+python3 tools/dx7_bank.py info MYBANK.syx          # the 32 names; is it a good bank?
+python3 tools/dx7_bank.py send MYBANK.syx          # to the keyboard (pip3 install mido python-rtmidi)
+python3 tools/dx7_bank.py factory C strings.syx    # a factory bank as a file, to edit elsewhere
+```
+
+Any SysEx sender works too (SysEx Librarian, MIDI-OX, a DAW). Yamaha's own DX7 cartridges are not in the
+firmware; if you have them as `.syx`, send one as your bank.
+
+**Load.** Six FM notes held with the pad in FM is the heaviest HYP-1 gets (on a computer, about a fifth more than
+HYP-1 alone). On the keyboard, hold GLOBE for its card: it shows the CPU load and the xruns. If they climb, use
+Mono or fewer notes.
+
 ### The wheels
 
-The wheels never change what is stored: back at rest, the music is as it was. While one is off rest the
+The wheels never change what is stored: back at rest, the music is as it was. The pitch wheel bends the FM
+voice too. While one is off rest the
 header says **BEND** or **FLT**.
 
 ## What the SMK-37 cannot do

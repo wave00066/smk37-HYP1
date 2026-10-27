@@ -21,6 +21,9 @@
  * The wheels never change what is stored. One card at a time: KNOB BANK closes the fader card, FADER BANK
  * the picker. */
 
+#if !EN_FM
+#error "the SMK-37 build has the FM voice (EN_FM 1)"
+#endif
 #define SMK_NBANK 3
 #define SMK_CARD_MS 1800u
 static const uint8_t SMK_FADER_PAR[SMK_NBANK][4] = {{P_PAD, P_BASS, P_ACID, P_PULSE},
@@ -29,6 +32,7 @@ static const uint8_t SMK_FADER_PAR[SMK_NBANK][4] = {{P_PAD, P_BASS, P_ACID, P_PU
 static const char *const SMK_FADER_LABEL[SMK_NBANK][4] = {{"Pad", "Drone", "Acid", "Drums"},
                                                           {"Cutoff", "Reso", "Env mod", "Decay"},
                                                           {"Echo", "Reverb", "Noise", "Drone cut"}};
+#define SMK_OKEY(i) (NKEYS + ((i) < 5u ? (int)(i) : (int)(i) - 27))   /* an outer key's slot in ui.key_note (27..36) */
 static const char *const SMK_BANK_NAME[SMK_NBANK] = {"A LEVELS", "B ACID", "C SPACE"};
 /* SMK_LANE3: the lanes in three letters (ui.c) */
 
@@ -99,15 +103,15 @@ static void smk_input(uint32_t btn)
         if (i >= 5u && i < 32u)
             continue;
         if (smk.okey_voice[i] && !(kb >> i & 1u)) {   /* let go: its note off, wherever it went */
-            en_note(smk.okey_voice[i] - 1, 48 + (int)i, 0);
+            voice_key(smk.okey_voice[i] - 1, SMK_OKEY(i), 48 + (int)i, 0, 0);
             smk.okey_voice[i] = 0;
         }
         if (!(kh >> i & 1u) || shift || ui.fx_menu || ui.view == V_SEQ)
             continue;
-        vc = voice_of(ui.view);
-        if (by_hand(vc)) {                       /* a voice off the algorithm, its page: the key plays it */
+        vc = key_voice_now();
+        if (vc >= 0) {                           /* a voice by hand on its page, or the FM voice: the key plays it */
             smk.okey_voice[i] = (uint8_t)(vc + 1);
-            en_note(vc, 48 + (int)i, 1);         /* key 0 is C3 (MIDI 48), as F3 is 53 */
+            voice_key(vc, SMK_OKEY(i), 48 + (int)i, plat_key_vel((int)i), 1);   /* key 0 is C3 (MIDI 48), as F3 is 53 */
         } else {
             toggle_note((int)(i % 12u));
         }

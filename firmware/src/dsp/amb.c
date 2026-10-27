@@ -25,7 +25,12 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     [P_PULSE] = {"Drums", 0, 100, 75},      [P_NOISE] = {"Noise", 0, 100, 20},
     [P_TEMPO] = {"Tempo", 70, 190, 128},   [P_EVOLVE] = {"Evolve", 0, 100, 40},   [P_MOTION] = {"Motion", 0, 100, 60},
     [P_DRIFT] = {"Drift", 0, 100, 60},
-    [P_BRIGHT] = {"Bright", 0, 100, 35},    [P_PADTONE] = {"Sound", 0, EN_NSOUND - 1, 1},     [P_DETUNE] = {"Detune", 0, 100, 30},
+#if EN_FM
+    [P_BRIGHT] = {"Bright", 0, 100, 35},    [P_PADTONE] = {"Sound", 0, EN_NSOUND + EN_NFMPATCH - 1, 1},   /* past 15: DX7 */
+#else
+    [P_BRIGHT] = {"Bright", 0, 100, 35},    [P_PADTONE] = {"Sound", 0, EN_NSOUND - 1, 1},
+#endif
+    [P_DETUNE] = {"Detune", 0, 100, 30},
     [P_PE_ATK] = {"Attack", 0, 100, 45},    [P_PE_HOLD] = {"Hold", 0, 100, 35},    [P_PE_REL] = {"Release", 0, 100, 55},
     [P_PE_REST] = {"Rest", 0, 100, 20},
     [P_PL_RATE] = {"Rate", 0, 7, 4},        [P_PL_DEPTH] = {"Depth", 0, 100, 25},  [P_PL_SHAPE] = {"Shape", 0, 5, 0},
@@ -60,6 +65,13 @@ static const en_param_t PARAMS[P_NPARAMS] = {
     [P_KIT_KICK] = {"Kick", 0, EN_NKIT - 1, 0}, [P_KIT_SNARE] = {"Snare", 0, EN_NKIT - 1, 0},
     [P_KIT_HAT] = {"Hats", 0, EN_NKIT - 1, 0},  [P_KIT_PERC] = {"Perc", 0, EN_NKIT - 1, 0},
     [P_PAD_MAN] = {"Pad hand", 0, 1, 0},     [P_DR_MAN] = {"Drone hand", 0, 1, 0}, [P_AC_MAN] = {"Acid hand", 0, 1, 0},
+#if EN_FM
+    [P_FM_LVL] = {"Level", 0, 100, 70},      [P_FM_PATCH] = {"Patch", 0, EN_NFMPATCH - 1, 0},
+    [P_FM_BRIGHT] = {"Bright", 0, 100, 50},  [P_FM_SPACE] = {"Space", 0, 100, 30},
+    [P_FM_SNAP] = {"Snap", 0, 1, 0},         [P_FM_MONO] = {"Mono", 0, 1, 0},
+    [P_FM_GLIDE] = {"Glide", 0, 100, 0},     [P_FM_VEL] = {"Velocity", 0, 100, 70},
+    [P_FM_OCT] = {"Octave", -3, 3, 0},       [P_FM_KEYS] = {"FM keys", 0, 1, 0},
+#endif
     [P_CHORD] = {"Chord", 0, EN_NCHORD - 1, 0}, [P_VOICING] = {"Voicing", 0, 1, 0},
     [P_DD_CHANGE] = {"Change", 0, 2, 0}, [P_DD_EVERY] = {"Every", 0, 5, 2}, [P_DD_POOL] = {"Pool", 2, EN_NPAT, 4},
     [P_DD_MUTATE] = {"Mutate", 0, 2, 0},
@@ -213,7 +225,21 @@ void en_param_text(int i, int v, char *b)
     switch (i) {
     case P_ETIME: s = ETIME_NAME[(unsigned)v < 6u ? v : 0]; break;
     case P_MIDI: s = ONOFF[v ? 1 : 0]; break;
+#if EN_FM
+    case P_PADTONE:
+        if (v >= EN_NSOUND) {                    /* a DX7 patch: its code (the name is beside it, ui.c) */
+            en_fm_code(v - EN_NSOUND, b);
+            return;
+        }
+        s = EN_PAD_SOUND[(unsigned)v < EN_NSOUND ? v : 0];
+        break;
+    case P_FM_PATCH: en_fm_code(v, b); return;
+    case P_FM_SNAP: s = v ? "Scale" : "Off"; break;
+    case P_FM_MONO: s = v ? "Mono" : "Poly"; break;
+    case P_FM_KEYS: s = ONOFF[v ? 1 : 0]; break;
+#else
     case P_PADTONE: s = EN_PAD_SOUND[(unsigned)v < EN_NSOUND ? v : 0]; break;
+#endif
     case P_DR_INST: s = EN_DRONE_SOUND[(unsigned)v < EN_NSOUND ? v : 0]; break;
     case P_KIT_KICK: case P_KIT_SNARE: case P_KIT_HAT: case P_KIT_PERC: s = EN_KIT_NAME[(unsigned)v < EN_NKIT ? v : 0]; break;
     case P_MODE: s = EN_MODE_NAME[(unsigned)v < EN_NMODES ? v : 0]; break;
@@ -439,7 +465,8 @@ const char *en_chord_name(const int *pcs, int n, char *buf)
 }
 
 /* ------------------------------------------------------------ commands --- */
-enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_SECTION, C_FX, C_MUTE, C_NOTE, C_HUSH };
+enum { C_SET, C_POOL, C_PLAY, C_NEXT, C_FREEZE, C_SEED, C_PANIC, C_CLOCK, C_REGROW, C_SECTION, C_FX, C_MUTE, C_NOTE, C_HUSH,
+       C_FMNOTE };
 static uint8_t muted;                            /* remote: no sound, no MIDI (C_MUTE, after what's queued) */
 static uint8_t hush;                             /* a store while playing: fade out, hold, fade back in (C_HUSH) */
 static float hush_g = 1.0f;                      /* its gain, 0..1 */
@@ -466,6 +493,9 @@ void en_panic(void) { post(C_PANIC, 0, 0); }
 void en_mute(int on) { post(C_MUTE, on, 0); }
 void en_hush(int on) { post(C_HUSH, on, 0); }
 void en_note(int voice, int note, int on) { post(C_NOTE, voice, (note & 0x7F) | (on ? 0x100 : 0)); }
+#if EN_FM
+void en_fm_note(int note, int vel, int on) { post(C_FMNOTE, vel < 1 ? 1 : vel > 127 ? 127 : vel, (note & 0x7F) | (on ? 0x100 : 0)); }
+#endif
 void en_clock(int msg) { post(C_CLOCK, msg, 0); }
 void en_regrow(void) { post(C_REGROW, 0, 0); }
 #if BOARD_SMK37
@@ -743,6 +773,16 @@ typedef struct {
     float pamp;                                 /* a played note's envelope, 0..1 */
 } pad_t;
 static pad_t pad[EN_NPAD];
+#if EN_FM
+static uint8_t fm_pad_seq[EN_NPAD];            /* bumped by each new breath, stab or key: the DX7 pad's note-on (fm.c) */
+static float fm_pad_note[EN_NPAD];             /* each voice's pitch now (MIDI, fractional): pad_coefs */
+#define FM_PAD_NEW(i) (fm_pad_seq[i]++)
+static void fm_init(void);
+static void fm_quiet(void);
+static void fm_note_cmd(int key, int vel, int on);
+#else
+#define FM_PAD_NEW(i) ((void)0)
+#endif
 static float pad_gate, pad_gain, pad_vol, bright, detune = 0.00144f;
 static const float PAD_PAN[EN_NPAD] = {-0.55f, -0.18f, 0.18f, 0.55f};
 static const float BREATH[EN_NPAD] = {1.0f, 1.21f, 1.43f, 1.67f};    /* unequal cycles, as 2/1's 12..20 s loops */
@@ -827,6 +867,7 @@ static void pad_breathe(pad_t *v, int i)        /* a new breath: its length, its
     v->midi_note = (uint8_t)v->target;
     if (en_playing && !par[P_PAD_MAN])
         midi(0x90, v->midi_note, (uint32_t)(50.0f + 40.0f * v->peak));
+    FM_PAD_NEW(i);
 }
 
 /* a new key (piece, root, scale): the voices still singing the old one fade out in about a second and
@@ -911,6 +952,9 @@ static void pad_coefs(pad_t *v, int i)          /* every 32 samples: the breath,
     if (v->vib >= 1.0f)
         v->vib -= 1.0f;
     f = PM(mtof(v->note + 0.08f * motion * mod[i].v + pad_pitch));          /* a slow drift, as tape; the LFO */
+#if EN_FM
+    fm_pad_note[i] = v->note + 0.08f * motion * mod[i].v + pad_pitch;
+#endif
     v->inc[0] = f * (1.0f - detune) * (1.0f / EN_SR);   /* Detune: 2.5 .. 25 cents either way */
     v->inc[1] = f * (1.0f + detune) * (1.0f / EN_SR);
     vw = fm_clampf((float)bright * 0.01f + 0.25f * arcm + 0.2f * motion * mod[(i + 2) % NMOD_PAD].v + 0.4f * pad_filt,
@@ -1518,6 +1562,7 @@ static void tick(void)
             v->voices = (uint8_t)pad_osc();
             v->midi_note = (uint8_t)v->target;
             midi(0x90, v->midi_note, (uint32_t)(60.0f + 40.0f * stab_env));
+            FM_PAD_NEW(i);
         }
     }
     en_drum_pos = (uint8_t)st;
@@ -1989,6 +2034,7 @@ static void pad_play(int key, int on)
         v->voices = (uint8_t)pad_osc();
         v->midi_note = (uint8_t)v->note;
         midi(0x90, v->midi_note, 100);
+        FM_PAD_NEW(best);
     }
 }
 static void note_cmd(int voice, int key, int on)
@@ -2068,6 +2114,9 @@ static void note_cmd(int voice, int key, int on)
 static void quiet(void)
 {
     int i;
+#if EN_FM
+    fm_quiet();
+#endif
     nheld[0] = nheld[1] = nheld[2] = 0;
     en_held = 0;
     for (i = 0; i < EN_NPAD; i++)
@@ -2135,6 +2184,9 @@ void en_init(void)
     drum_publish();
     drift_reset();
     pl_decay = pl_decay_t;
+#if EN_FM
+    fm_init();
+#endif
 }
 
 /* ------------------------------------------------------------ transport --- */
@@ -2435,6 +2487,9 @@ static void drain(void)
         case C_MUTE: muted = (uint8_t)(a != 0); break;
         case C_HUSH: hush = (uint8_t)(a != 0); break;
         case C_NOTE: note_cmd(a, b & 0x7F, b >> 8); break;
+#if EN_FM
+        case C_FMNOTE: fm_note_cmd(b & 0x7F, a, b >> 8); break;
+#endif
         case C_REGROW: regrow(); break;
         case C_SECTION:
             if (a == EN_CMD_BREAK && sec != SEC_GROOVE && sec != SEC_BUILD)
@@ -2488,11 +2543,20 @@ static void pad_bus(uint32_t n)
         plp[j] = fm_flush(plp[j]);
 }
 
+#if EN_FM
+#include "fm.c"
+#endif
+
 static void render_pad(uint32_t n)
 {
     int i;
     float lvl = 0.0f;
     uint32_t j0;
+#if EN_FM
+    const int fmp = fm_pad_on();               /* a DX7 patch sings the pad (fm.c) */
+    if (fmp)
+        fm_pad_fill(n);
+#endif
     for (j0 = 0; j0 < n; j0++)
         padl[j0] = padr[j0] = 0.0f;
     const float g = pad_vol * 0.5f * pad_lvl * (1.0f + 0.9f * fm_maxf(brk, 0.0f)) * PAD_SOUND[pad_snd()].g *   /* the pad rises in a breakdown */
@@ -2536,6 +2600,11 @@ static void render_pad(uint32_t n)
                 idx = (0.04f + 0.1f * bright * 0.01f + 0.1f * br) * (1.0f + 0.4f * arcm);
             }
             amp += (tgt - amp) * ar;
+#if EN_FM
+            if (fmp)
+                x = fm_pq[i][j] * 1.2f;
+            else
+#endif
             switch (v->voices) {
             case PO_RHODES: {                    /* FM, the modulator at the carrier's pitch: a Rhodes */
                 float m = sine(p0) * idx;
@@ -2616,6 +2685,10 @@ static void render_pad(uint32_t n)
         en_pad_amp[i] = amp;
         lvl = fm_maxf(lvl, amp);
     }
+#if EN_FM
+    if (fmp)
+        fm_pad_used(n);
+#endif
     en_pad_level = lvl;
     while (nb--)
         stab_env *= stab_k;
@@ -3164,6 +3237,9 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
     render_pad(n);
     render_bass(n);
     render_acid(n);
+#if EN_FM
+    render_fm(n);
+#endif
     render_noise(n);
     for (j = 0; j < n; j++) {                   /* the sidechain: the kick pushes the rest down, briefly */
         float gt = 1.0f;

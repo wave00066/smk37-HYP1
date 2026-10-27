@@ -42,12 +42,31 @@ void plat_midi_out(uint32_t pkt);      /* queue one (audio ISR or main loop) */
 int plat_store_load(uint32_t obj, void *dst, uint32_t max);   /* bytes loaded, < 0 = none / bad */
 int plat_store_save(uint32_t obj, const void *src, uint32_t len);   /* 0 = ok */
 #define PLAT_STORE_MAX 3840u           /* bytes per object */
+#ifndef EN_FM                          /* the FM voice (dsp/fm.c): the SMK-37 build's (as amb.h) */
+#if defined(BOARD_SMK37) && BOARD_SMK37
+#define EN_FM 1
+#else
+#define EN_FM 0
+#endif
+#endif
+#if EN_FM
+enum { OBJ_PROJ, OBJ_PANEL, OBJ_FMU0, OBJ_FMU1, OBJ_NOBJ };   /* the user's DX7 bank: voices 1-16, 17-32 */
+#else
 enum { OBJ_PROJ, OBJ_PANEL, OBJ_NOBJ };
+#endif
 /* flash: OBJ_PROJ 0xFC000, OBJ_PANEL 0xDC000 (2 sectors each, inside Felucca's data area) */
 
 /* audio load in % of the render budget, and xruns since boot (device: from the ISR) */
 uint32_t plat_cpu_pct(void);
 uint32_t plat_xruns(void);
+
+#if EN_FM
+int plat_key_vel(int key);             /* the velocity 1..127 of a key's last press (SMK-37: keybed key, 0 = C3) */
+/* a SysEx dump that came in over USB (up to 4104 bytes: a DX7 32-voice bank): its bytes and length (0: none
+ * waiting), read in place until plat_sysex_done() lets the next one in */
+const uint8_t *plat_sysex_peek(uint32_t *n);
+void plat_sysex_done(void);
+#endif
 
 #if defined(BOARD_SMK37) && BOARD_SMK37
 /* The SMK-37 build: the M-Vave SMK-37's controls beyond the FM-1's (plat_fm1.c over hal/smk_input.h). plat_keys()
