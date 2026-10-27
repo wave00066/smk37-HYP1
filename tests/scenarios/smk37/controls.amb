@@ -1,0 +1,152 @@
+# The SMK-37 build: the outer keys, the pads as the drum lane's steps, < > the lane, the picker (KNOB BANK),
+# the fader banks (FADER BANK), the wheels, an outer key playing a voice by hand, the SMK's names on screen
+wait 500
+expect playing 1
+expect pool 0x5AD
+shot main.png
+padsfile main.pads
+# A Aeolian. C3 (keybed key 0) is C, the third: out; C6 (key 36) puts it back
+kbkey 0
+expect pool 0x5A5
+kbkey 36
+expect pool 0x5AD
+# the middle keys as on the FM-1: F#3 in and out
+tapkey 1
+expect pool 0x7AD
+tapkey 1
+expect pool 0x5AD
+# the pads: the kick's steps in reading order (it hits on 1 5 9 13). Pad 3 (top row) turns step 3 on, and off
+expect lane0 4369
+expect padg0 >10
+expect padg2 <20
+pad 2
+expect lane0 4373
+expect padg2 >10
+pad 2
+expect lane0 4369
+pad 2
+expect lane0 4373
+# > : the snare's steps; a hit on step 13 (the bottom row's fifth pad)
+sbtn RIGHT
+expect seqlane 1
+pad 12
+expect lane1 4096
+padsfile snare.pads
+shot snare.png
+# < twice: the kick, then round to the perc
+sbtn LEFT
+expect seqlane 0
+sbtn LEFT
+expect seqlane 5
+sbtn RIGHT
+expect seqlane 0
+# the picker: the top row pieces 01-08, the bottom row the lanes, then 09 and 10
+sbtn KNOB_BANK
+expect picker 1
+expect smkleds 1
+shot picker.png
+padsfile picker.pads
+pad 3
+expect piece 3
+pad 15
+expect piece 9
+pad 0
+expect piece 0
+# a lane pad: that lane, and the pads go back to its steps
+pad 9
+expect seqlane 1
+expect picker 0
+expect smkleds 0
+sbtn LEFT
+expect seqlane 0
+# a PRESETS turn shows the picker for a moment
+turn PRESET 1
+expect piece 1
+expect picker 1
+wait 4000
+expect picker 0
+turn PRESET -1
+wait 4000
+# the faders: bank B, the acid; a fader takes over once it moves
+sbtn FADER_BANK
+expect fbank 1
+expect fcard 1
+expect smkleds 2
+fader 0 127
+expect par34 100
+fader 1 0
+expect par35 0
+fader 2 90
+shot faders.png
+padsfile faders.pads
+wait 2000
+expect fcard 0
+# bank C, then A again: the first reading after a bank change only sets where the fader is
+sbtn FADER_BANK
+expect fbank 2
+sbtn FADER_BANK
+expect fbank 0
+expect smkleds 0
+fader 0 0
+expect par0 0
+fader 0 64
+expect par0 50
+# one card at a time: KNOB BANK closes the fader card, FADER BANK the picker
+sbtn KNOB_BANK
+expect fcard 0
+expect picker 1
+sbtn FADER_BANK
+expect picker 0
+expect fcard 1
+sbtn FADER_BANK
+sbtn FADER_BANK
+expect fbank 0
+wait 2000
+# the wheels: a bend of 2 semitones, the filter macro; nothing stored changes
+wheel pitch 127
+wheel mod 127
+wait 300
+expect pmul1000 1122
+expect pcut100 >95
+expect par34 100
+shot wheels.png
+wheel pitch 0
+wheel mod 0
+wait 300
+expect pmul1000 1000
+expect pcut100 <3
+# an outer key playing the drone by hand (its page: LFO; SCALE + CHORD = SEL + ENV)
+tap LFO
+press SEL
+tap ENV
+release SEL
+expect par90 1
+wait 1500
+kbkey 0 down
+wait 300
+expect held 1
+expect pool 0x5AD
+expect bass_level >50
+kbkey 0 up
+wait 100
+expect held 0
+press SEL
+tap ENV
+release SEL
+expect par90 0
+# the SMK's names on screen: the help card, Global's store line, the sequencer
+tap HOME
+press ENV
+wait 1200
+shot help.png
+release ENV
+wait 200
+tap GLO
+wait 300
+shot global.png
+press SEQ
+wait 600
+release SEQ
+wait 200
+shot seq.png
+padsfile seq.pads

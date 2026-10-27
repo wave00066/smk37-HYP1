@@ -23,6 +23,9 @@
  * Float only, no libm: fastmath.h. */
 #pragma once
 #include <stdint.h>
+#ifndef BOARD_SMK37
+#define BOARD_SMK37 0                  /* 1: the M-Vave SMK-37 build (tools/build.py --board smk37) */
+#endif
 
 #define EN_SR 44100.0f
 #define EN_NDRUM 6                     /* the drum lanes: kick, snare, clap, closed hat, open hat, perc */
@@ -114,6 +117,12 @@ void en_hush(int on);                          /* a store while playing: fade ou
 extern volatile uint8_t en_hushed;             /* faded right out (the flash can be written) */
 void en_panic(void);                           /* everything quiet, now */
 void en_regrow(void);                          /* a new piece: fresh loops, the home chord */
+#if BOARD_SMK37
+/* The SMK-37 build: the wheels. bend_q12: pitch bend in 1/4096 semitone (+-2 semitones: 8192) on the pitched
+ * voices (pad, drone, acid; by hand too); modw 0..127: the mod wheel, a filter macro that opens the acid's and the
+ * drone's cutoff together (up to 3 octaves at the top). Never saved: at rest, the music is as stored. */
+void en_perf(int32_t bend_q12, int32_t modw);
+#endif
 
 /* the sections: a breakdown, a build, the drop, each taken on the next bar. A breakdown lasts until
  * a build (four bars, then the drop) or a drop is asked for; a build cut short by a drop drops. */

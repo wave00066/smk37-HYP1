@@ -36,6 +36,29 @@
  * seconds after a change. */
 #include "../dsp/fastmath.h"
 
+/* the controls' names on the screen: the FM-1's, or as the SMK-37 prints them (the same strings on the FM-1) */
+#if BOARD_SMK37
+#define NM_SEL "SCALE"
+#define NM_ENV "CHORD"
+#define NM_GLO "GLOBE"
+#define NM_SAVE "BT"
+#define NM_SELECT "K2"
+#define NM_ALGO "K3"
+#define NM_KEYS "PADS"
+static void smk_input(uint32_t btn);
+static void smk_reset(void);
+static void smk_preset_turned(void);
+static int smk_wheels_off(void);       /* bit 0: the pitch wheel off rest, bit 1: the mod wheel up */
+static const char *const SMK_LANE3[6] = {"KCK", "SNR", "CLP", "HAT", "OPN", "PRC"};
+#else
+#define NM_SEL "SEL"
+#define NM_ENV "ENV"
+#define NM_GLO "GLO"
+#define NM_SAVE "SAVE"
+#define NM_SELECT "SELECT"
+#define NM_ALGO "ALGO"
+#endif
+
 /* --------------------------------------------------------------- pages --- */
 enum { V_TEMPO, V_PAD, V_PADENV, V_PADLFO, V_CHORDS, V_NOISE, V_DRONE, V_DRENV, V_DRLFO, V_ACID, V_ACENV, V_ACLINE,
        V_DRUMS, V_LINKS, V_KIT, V_DDRIFT, V_SPACE, V_GLOBAL, NDIAL, V_SEQ = NDIAL, NVIEWS };
@@ -688,7 +711,7 @@ static void rm_draw(void)
     text_c(120, 4, &FONT_L, "REMOTE", K_ACC);
     text_c(120, 44, &FONT_S, rm.link ? "PLAYING THE BROWSER" : "WAITING FOR THE BROWSER", rm.link ? K_PAD : K_DIM);
     text_c(120, 66, &FONT_XS, "USB MIDI  //  CHANNEL 16", K_DIM);
-    text_c(120, 96, &FONT_S, "SEL + GLO: BACK", K_TEXT);
+    text_c(120, 96, &FONT_S, NM_SEL " + " NM_GLO ": BACK", K_TEXT);
     cv_blit(0, 56);
     rm.drawn = (uint8_t)(1u + rm.link);
 }
@@ -822,6 +845,9 @@ static void input(void)
         runner_input(btn, keys);
         return;
     }
+#if BOARD_SMK37
+    smk_input(btn);                              /* the pads, the outer keys, the faders, the wheels, < > */
+#endif
     ch = btn ^ ui.btn;
     ui.btn = btn;
     for (i = 0; i < NB; i++) {
@@ -1037,6 +1063,9 @@ static void input(void)
             set_piece(proj.piece + (e > 0 ? 1 : -1));
         }
         ui.turn_t = plat_ms();
+#if BOARD_SMK37
+        smk_preset_turned();
+#endif
     }
     if (ui.piece_q && (!en_playing || en_drum_pos == EN_NSTEP - 1)) {   /* the bar's last step: the piece */
         int t = ui.piece_q - 1;
@@ -1046,7 +1075,7 @@ static void input(void)
     if ((btn >> B_SEL & 1u) && !(ui.btn_used >> B_SEL & 1u) && !ui.shift_hint &&
         plat_ms() - ui.down_t[B_SEL] >= 400u) {
         ui.shift_hint = 1;                     /* SEL held alone: what the shift does */
-        say("SHIFT", ui.view == V_SEQ ? "COPY / CLEAR" : "ALGO: SOUND");
+        say("SHIFT", ui.view == V_SEQ ? "COPY / CLEAR" : NM_ALGO ": SOUND");
     }
     if (ui.save_global && !ui.factory_done && (btn >> B_SAVE & 1u)) {
         uint32_t held = plat_ms() - ui.down_t[B_SAVE];
@@ -1257,6 +1286,9 @@ static void draw_header(void)
                       (uint32_t)proj.par[P_TEMPO] | (uint32_t)ui.theme << 8 | (uint32_t)(ui.fx_lock != 0) << 12);
     if (msg)
         h = hash(hash(h, (uint32_t)ui.msg[0][0] << 8 | ui.msg[0][1]), ui.msg_until);
+#if BOARD_SMK37
+    h = hash(h, (uint32_t)smk_wheels_off());
+#endif
     if (en_playing)
         h = hash(h, (en_bars / 4u) & 1u);
     if (h == ui.sig[0])
@@ -1290,6 +1322,21 @@ static void draw_header(void)
             cv_text(x, 8, &FONT_XS, "FX", K_PAD);
             x -= 10;
         }
+#if BOARD_SMK37
+        {   /* the wheels off rest: what they do now (they are never stored) */
+            int w = smk_wheels_off();
+            if (w & 2) {
+                x -= text_w(&FONT_XS, "FLT");
+                cv_text(x, 8, &FONT_XS, "FLT", K_ACID);
+                x -= 10;
+            }
+            if (w & 1) {
+                x -= text_w(&FONT_XS, "BEND");
+                cv_text(x, 8, &FONT_XS, "BEND", K_ACID);
+                x -= 10;
+            }
+        }
+#endif
         if (en_ext) {
             t[0] = 'E';
             t[1] = 'X';
@@ -1412,6 +1459,10 @@ static void draw_kit(void)                       /* right: the pattern playing, 
     for (l = 0; l < EN_NLANE; l++) {
         uint16_t bits = en_pats[pat][l];
         int g = q16(en_drum_glow[l]);
+#if BOARD_SMK37
+        if (l == ui.lane)                       /* the lane on the pads */
+            cv_rect(164, 26 + l * 9, 3, 6, K_ACC);
+#endif
         for (s = 0; s < 16; s++) {
             int32_t x = 170 + s * 4, y = 26 + l * 9;
             int on = (int)(bits >> s & 1u), cur = en_playing && s == pos;
@@ -1423,6 +1474,12 @@ static void draw_kit(void)                       /* right: the pattern playing, 
     }
     itoa_u((uint32_t)pat + 1u, t + 4);
     cv_text(170, 84, &FONT_XS, t, K_TEXT);
+#if BOARD_SMK37
+    {   /* the lane the pads show (< >) */
+        int32_t x = cv_text(170, 100, &FONT_XS, "PADS", K_DIM);
+        cv_text(x + 5, 100, &FONT_XS, SMK_LANE3[ui.lane], K_ACC);
+    }
+#endif
     if (en_pat_next != en_pat_now) {             /* the next, waiting for the bar */
         char u[8] = "> ";
         itoa_u((uint32_t)en_pat_next + 1u, u + 2);
@@ -1468,17 +1525,23 @@ static void draw_seq(void)
 
 /* a button's card (help_tick): its name, then what it does, in the main area's place */
 #define HELP_LINES 4
+#if BOARD_SMK37                                 /* as printed, then the FM-1's name the manual uses */
+static const char *const BTN_LABEL[NB] = {"FX", "SCALE (SEL)", "CHORD (ENV)", "NOTE RPT (LFO)", "PARA (EDIT)",
+                                          "GLOBE (GLO)", "PATCH (HOME)", "BT (SAVE)", "ARP", "SEQ", "SEQ PLAY",
+                                          "SEQ REC", "OCTAVE-", "OCTAVE+"};
+#else
 static const char *const BTN_LABEL[NB] = {"FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ",
                                           "PLAY", "REC", "OCT-", "OCT+"};
+#endif
 static int help_lines(int b, const char *l[HELP_LINES])
 {
     int n = 0;
 #define L(t) (l[n++] = (t))
     switch (b) {
-    case B_HOME: L("TEMPO"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ SELECT: TEMPO"); break;
-    case B_ENV: L("PAD; AGAIN: ENV, LFO,"); L("THEN THE CHORDS"); L("SEL + ENV ON A VOICE'S"); L("PAGE: PLAY IT BY HAND"); break;
-    case B_ARP: L("THE ACID; AGAIN: ITS"); L("ENVELOPE, THEN THE LINE"); L("SEL + ENV: BY HAND"); L("SEL + ALGO: ITS SOUND"); break;
-    case B_LFO: L("THE DRONE; AGAIN: ITS"); L("ENVELOPE, THEN ITS LFO"); L("SEL + ENV: BY HAND"); L("SEL + ALGO: ITS SOUND"); break;
+    case B_HOME: L("TEMPO"); L("TEMPO, EVOLVE, MOTION, DRIFT"); L("+ " NM_SELECT ": TEMPO"); break;
+    case B_ENV: L("PAD; AGAIN: ENV, LFO,"); L("THEN THE CHORDS"); L(NM_SEL " + " NM_ENV " ON A VOICE'S"); L("PAGE: PLAY IT BY HAND"); break;
+    case B_ARP: L("THE ACID; AGAIN: ITS"); L("ENVELOPE, THEN THE LINE"); L(NM_SEL " + " NM_ENV ": BY HAND"); L(NM_SEL " + " NM_ALGO ": ITS SOUND"); break;
+    case B_LFO: L("THE DRONE; AGAIN: ITS"); L("ENVELOPE, THEN ITS LFO"); L(NM_SEL " + " NM_ENV ": BY HAND"); L(NM_SEL " + " NM_ALGO ": ITS SOUND"); break;
     case B_GLO: {                                /* and the audio's load, for testing on the device */
         static char cpu[24];
         uint32_t c = plat_cpu_pct(), x = plat_xruns(), j = 4;
@@ -1491,7 +1554,7 @@ static int help_lines(int b, const char *l[HELP_LINES])
         itoa_u(x > 9999u ? 9999u : x, cpu + j);
         L("GLOBAL");
         L("ROOT, THEME, TUNE, MIDI OUT");
-        L("+ SEL: REMOTE (BROWSER)");
+        L("+ " NM_SEL ": REMOTE (BROWSER)");
         L(cpu);
         break;
     }
@@ -1525,7 +1588,7 @@ static void draw_fx(void)
     if (ui.lock_mode)
         cv_text(118, 1, &FONT_XS, "TAP AGAIN: OFF", K_PAD);
     else if (ui.fx_lock)
-        cv_text(118, 1, &FONT_XS, "LOCKED: SAVE+KEY", K_PAD);
+        cv_text(118, 1, &FONT_XS, "LOCKED: " NM_SAVE "+KEY", K_PAD);
     else
         cv_text(118, 1, &FONT_XS, "M: MUTE  S: SOLO", K_DIM);
     for (k = 0; k < NKEYS; k++) {
@@ -1548,6 +1611,9 @@ static void draw_fx(void)
 }
 
 #include "runner.c"
+#if BOARD_SMK37
+#include "ui_smk.c"
+#endif
 static int runner_on(void) { return kr.on; }
 
 static void draw_main(void)
@@ -1579,10 +1645,17 @@ static void draw_main(void)
         }
         return;
     }
+#if BOARD_SMK37
+    if (smk_card())                              /* the fader card or the picker */
+        return;
+#endif
     for (i = 0; i < EN_NLANE; i++)
         h = hash(h, en_pats[ui.view == V_SEQ ? seq_pat() : en_pat_now][i] | (uint32_t)q16(en_drum_glow[i]) << 16);
     h = hash(h, en_drum_pos | (uint32_t)en_pat_now << 8 | (uint32_t)en_pat_next << 12 | (uint32_t)en_pulse_rest << 16 |
                     (uint32_t)ui.view << 20);
+#if BOARD_SMK37
+    h = hash(h, ui.lane);                        /* the pads' lane, marked on the kit */
+#endif
     if (ui.view == V_SEQ) {
         h = hash(h, ui.lane | (uint32_t)proj.par[P_PATTERN] << 16);
         if (h == ui.sig[1])
@@ -1659,7 +1732,7 @@ static void draw_knobs(void)
             int32_t xs;
             caps(u, piece_name(proj.piece), 4);
             if (proj.edited >> proj.piece & 1u) {
-                const char *q = " SAVE: STORE";
+                const char *q = " " NM_SAVE ": STORE";
                 int j = 2;
                 while (*q && j < 23)
                     u[j++] = *q++;
@@ -1788,6 +1861,9 @@ static void leds(void)
             if (ap >> ((5u + i) % 12u) & 1u)
                 k |= 1u << i;
     }
+#if BOARD_SMK37
+    smk_leds();                                  /* the pads and KNOB BANK / FADER BANK */
+#endif
     plat_glow(1);
     plat_leds(b, k);
 }
@@ -1893,7 +1969,11 @@ static void draw_hyp(void)
                         cv_rect(18 + (g * 6 + c) * 7 + (pass ? 0 : 3), 10 + r * 7 + (pass ? 0 : 3), 7, 7,
                                 pass ? K_PAD : K_ACC);
     text_c(120, 76, &FONT_S, "HYPNOTIC TECHNO  //  ACID", K_TEXT);
+    #if BOARD_SMK37
+    text_c(120, 102, &FONT_XS, EN_VERSION[0] == 'D' ? "FOR THE M-VAVE SMK-37" : "FOR THE SMK-37  //  " EN_VERSION, K_DIM);
+#else
     text_c(120, 102, &FONT_XS, EN_VERSION[0] == 'D' ? "FOR THE M-VAVE FM-1" : "FOR THE FM-1  //  " EN_VERSION, K_DIM);
+#endif
     cv_blit(0, 30);
     for (c = 0; c < 16; c++)
         lcd_fill(8 + c * 14, SPLASH_STEP_Y, 11, 11, K_PANEL);
@@ -1926,6 +2006,9 @@ void ui_init(void)
     memset(&rm, 0, sizeof rm);
     memset(&ui, 0, sizeof ui);
     ui.touched = -1;
+#if BOARD_SMK37
+    smk_reset();
+#endif
     ui.boot_t = plat_ms();
     ui.theme = (uint8_t)proj.par[P_THEME];
     th = &THEMES[ui.theme < EN_NTHEME ? ui.theme : 0];

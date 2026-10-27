@@ -468,6 +468,31 @@ void en_hush(int on) { post(C_HUSH, on, 0); }
 void en_note(int voice, int note, int on) { post(C_NOTE, voice, (note & 0x7F) | (on ? 0x100 : 0)); }
 void en_clock(int msg) { post(C_CLOCK, msg, 0); }
 void en_regrow(void) { post(C_REGROW, 0, 0); }
+#if BOARD_SMK37
+/* the wheels (main loop -> render): read once per block; a torn read only lasts one block */
+static volatile int32_t perf_bend, perf_modw;
+void en_perf(int32_t bend_q12, int32_t modw)
+{
+    perf_bend = bend_q12 < -8192 ? -8192 : bend_q12 > 8192 ? 8192 : bend_q12;
+    perf_modw = modw < 0 ? 0 : modw > 127 ? 127 : modw;
+}
+static float pmul = 1.0f, pcut;                /* this block's pitch factor; the filter macro, 0..1 */
+static void perf_block(void)
+{
+    float semis = (float)perf_bend * (1.0f / 4096.0f), c = (float)perf_modw * (1.0f / 127.0f);
+    pmul = semis == 0.0f ? 1.0f : fm_exp2f(semis * (1.0f / 12.0f));
+    pcut += (c - pcut) * 0.25f;                /* a few blocks' glide: no zipper on a quick flick */
+}
+#ifdef EN_HOST
+float en_host_pmul(void) { return pmul; }      /* the host's tests read them */
+float en_host_pcut(void) { return pcut; }
+#endif
+#define PM(x) ((x) * pmul)                     /* a pitch, bent */
+#define PCUT_ADD(oct) + pcut * (oct)           /* the macro's push on a cutoff, in octaves */
+#else
+#define PM(x) (x)
+#define PCUT_ADD(oct)                          /* (the FM-1: nothing, the same code) */
+#endif
 void en_section(int cmd) { post(C_SECTION, cmd, 0); }
 void en_fx(uint32_t mask)                       /* in two halves: the queue carries 16 bits */
 {
@@ -885,7 +910,7 @@ static void pad_coefs(pad_t *v, int i)          /* every 32 samples: the breath,
     v->vib += (4.6f + 0.4f * (float)i) * 32.0f / EN_SR;
     if (v->vib >= 1.0f)
         v->vib -= 1.0f;
-    f = mtof(v->note + 0.08f * motion * mod[i].v + pad_pitch);              /* a slow drift, as tape; the LFO */
+    f = PM(mtof(v->note + 0.08f * motion * mod[i].v + pad_pitch));          /* a slow drift, as tape; the LFO */
     v->inc[0] = f * (1.0f - detune) * (1.0f / EN_SR);   /* Detune: 2.5 .. 25 cents either way */
     v->inc[1] = f * (1.0f + detune) * (1.0f / EN_SR);
     vw = fm_clampf((float)bright * 0.01f + 0.25f * arcm + 0.2f * motion * mod[(i + 2) % NMOD_PAD].v + 0.4f * pad_filt,
@@ -2617,7 +2642,7 @@ static void render_bass(uint32_t n)
         return;
     }
     bass.note += (bass.target - bass.note) * fm_minf((float)n * (bass.play ? GLIDE_K * 12.0f : GLIDE_K), 1.0f);
-    f = mtof(bass.note + (dest == 1 ? depth * drone_lfo.v : 0.0f));   /* the LFO on the pitch: a semitone at most */
+    f = PM(mtof(bass.note + (dest == 1 ? depth * drone_lfo.v : 0.0f)));   /* the LFO on the pitch: a semitone at most */
     i0 = f * (osc == DO_FIFTHS ? 1.49831f : osc == DO_REESE || osc == DO_HOOVER ? 0.9862f : 0.99481f) *
          (1.0f / EN_SR);                        /* -9, 0, +9 cents (Reese and Hoover: 24; Fifths: a fifth) */
     i1 = f * (1.0f / EN_SR);
@@ -2630,7 +2655,8 @@ static void render_bass(uint32_t n)
             oct = (float)par[P_DR_CUT] * 0.075f - 1.5f + DS->cut + (dest == 0 ? 2.5f * depth * drone_lfo.v : 0.0f) +
                   4.0f * (float)par[P_DE_AMT] * 0.01f * bass.env + 0.8f * motion * mod[9].v + 0.8f * arcm -
                   2.0f * fm_maxf(brk, 0.0f) - 1.6f * fm_minf(brk, 0.0f) - 0.35f * duck_env * pulse_vol +
-                  4.0f * (float)par[P_LK_KICK] * 0.01f * lk_kick;   /* the links: the kick opens it */
+                  4.0f * (float)par[P_LK_KICK] * 0.01f * lk_kick   /* the links: the kick opens it */
+                  PCUT_ADD(3.0f);               /* (SMK-37: the mod wheel) */
             fc = fm_clampf(f * 2.0f * fm_exp2f(oct), 45.0f, 9000.0f);
             svf_coefs(bass.c1, fc, reso_k);
             svf_coefs(bass.c2, fc * 1.3f, 1.4f);
@@ -2741,7 +2767,7 @@ static void render_acid(uint32_t n)
     for (j = 0; j < n; j++) {
         float x, y;
         if (!(j & 31u)) {                       /* the cutoff: its knob, the envelope, an accent's push */
-            float oct = base + envmod * acid.env * (1.0f + accamt * acid.acc) + 1.2f * accamt * acid.acc * acid.env;
+            float oct = base + envmod * acid.env * (1.0f + accamt * acid.acc) + 1.2f * accamt * acid.acc * acid.env PCUT_ADD(3.0f);
             float fc = fm_clampf(60.0f * fm_exp2f(oct), 50.0f, 14000.0f);
             svf_coefs(acid.c1, fc, k1);
             svf_coefs(acid.c2, fc * 1.15f, 1.2f);
@@ -2755,7 +2781,7 @@ static void render_acid(uint32_t n)
         }
         if (acid.gate_left > 0 && --acid.gate_left == 0)
             acid.amp_t = 0.0f;                  /* the gate closes */
-        inc += (acid.inc_t - inc) * glide;      /* a slide: ~50 ms */
+        inc += (PM(acid.inc_t) - inc) * glide;  /* a slide: ~50 ms */
         switch (osc) {
         case AO_SQUARE: case AO_PWM: {          /* a square (or a pulse): a saw less itself, part a turn on */
             float p2 = ph + (osc == AO_PWM ? pw : 0.5f);
@@ -3132,6 +3158,9 @@ static void render_chunk(int32_t *out, uint32_t n, float gain)
     const int odd = (int)((sixteenth - 1u) & 1u);         /* the sixteenth playing now: the second of an eighth? */
     for (j = 0; j < n; j++)
         mixl[j] = mixr[j] = rsend[j] = esend[j] = 0.0f;
+#if BOARD_SMK37
+    perf_block();
+#endif
     render_pad(n);
     render_bass(n);
     render_acid(n);
