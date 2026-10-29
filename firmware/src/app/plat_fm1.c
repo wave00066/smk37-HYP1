@@ -166,7 +166,7 @@ int plat_key_vel(int key)
 
 /* a Yamaha SysEx dump (F0 43 ..: a DX7 32-voice bank is 4104 bytes), gathered byte by byte in the USB interrupt
  * (usb.c sysex_byte), handed to the main loop whole (plat_sysex_take); one at a time, a second waits for it */
-static uint8_t sx_big[4104] EN_POOL;
+static uint8_t sx_big[4104];                  /* .bss: the POOL is full on the SMK-37 */
 static volatile uint32_t sx_big_n;
 static volatile uint8_t sx_big_on, sx_big_ready;
 static void app_sysex_byte(uint8_t b)

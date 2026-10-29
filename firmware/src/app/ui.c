@@ -423,7 +423,7 @@ static void set_piece(int i)                    /* the piece playing kept as it 
 
 #if EN_FM
 /* the user's DX7 bank (U01..U32): received over USB as a 32-voice bulk dump, kept in two flash objects */
-static uint8_t fm_bank[4096] EN_POOL;
+static uint8_t fm_bank[4096];                 /* .bss: the POOL is full on the SMK-37 */
 static void fm_bank_load(void)
 {
     if (plat_store_load(OBJ_FMU0, fm_bank, 2048) == 2048 && plat_store_load(OBJ_FMU1, fm_bank + 2048, 2048) == 2048)
