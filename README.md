@@ -18,9 +18,9 @@ hands.
 Tested on a real SMK-37 Elite: CPU about 60 % at most with the FM voice, no dropouts. The FM-1 build stays byte
 for byte the original's.
 
-**Build, back up and install it: [SMK-37 instructions](SMK37.md).** The packages are the `smk37` workflow's
-artifacts (Actions): `hyp1-smk37-elite-*.fwsc` for the Elite, `hyp1-smk37-*.fwsc` for the Pro,
-`hyp1-smk37-mke-*.fwsc` for the MKE-P37. Back up the whole flash first (SMK37.md shows how).
+**Download it from [Releases](../../releases/latest)**: `hyp1-smk37-elite-*.fwsc` for the Elite,
+`hyp1-smk37-*.fwsc` for the Pro, `hyp1-smk37-mke-*.fwsc` for the MKE-P37. **Back up and install it, step by step:
+[SMK-37 instructions](SMK37.md)** (back up the whole flash first).
 
 ![HYP-1 on the SMK-37: the pads as steps, the picker, a fader bank (the host simulator)](docs/img/hyp-smk37.png)
 

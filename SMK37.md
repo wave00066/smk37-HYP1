@@ -148,7 +148,8 @@ host/build_host.sh smk37               # the SMK-37 UI in the simulator: tests/s
 ```
 
 `.github/workflows/smk37.yml` builds the three packages on every push to the `smk37` branch, checks that the
-FM-1 build is byte for byte the base's, runs the tests, and keeps the packages as the run's artifacts.
+FM-1 build is byte for byte the base's, runs the tests, and keeps the packages as the run's artifacts
+(they expire). A tag `smk37-vX.Y.Z` also publishes them as a GitHub Release, the permanent downloads.
 
 ## Install
 

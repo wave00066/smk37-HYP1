@@ -2,14 +2,16 @@
 # HYP-1 for the M-Vave SMK-37 (SMK37.md): every push to the smk37 branch builds the three SMK-37 packages
 # (Elite, Pro, MKE-P37) with JieLi's toolchain, checks that the FM-1 build is byte for byte the one the branch
 # started from, runs the tests, and keeps the packages as the run's artifacts (Actions > the run > Artifacts).
-# It publishes nothing: the site stays firmware.yml's.
+# A tag smk37-vX.Y.Z also publishes the packages as a GitHub Release of that version (permanent downloads;
+# the artifacts expire). It never touches the site: that stays firmware.yml's.
 name: smk37
 on:
   push:
     branches: [smk37]
+    tags: ["smk37-v*"]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write              # the Release, on a tag only
 env:
   BASE: 57c456d                # the HYP-1 commit the SMK-37 port starts from (FM-1 byte-identity)
 jobs:
@@ -52,7 +54,11 @@ jobs:
             ~/fw-AC79_AIoT_SDK
           key: jieli-ac79-v1.2.1
       - name: Version
-        run: echo "V=1.5.$((GITHUB_RUN_NUMBER % 100))" >> "$GITHUB_ENV"     # identity SMK-37 Elite_70105NN
+        run: |                         # identity SMK-37 Elite_70105NN; a tag smk37-v1.5.9: that version
+          case "$GITHUB_REF" in
+            refs/tags/smk37-v*) echo "V=${GITHUB_REF#refs/tags/smk37-v}" >> "$GITHUB_ENV" ;;
+            *) echo "V=1.5.$((GITHUB_RUN_NUMBER % 100))" >> "$GITHUB_ENV" ;;
+          esac
       - name: The FM-1 build, byte for byte the base's (dev builds, the same day)
         run: |
           git worktree add ../base "$BASE"
@@ -117,3 +123,21 @@ jobs:
         with:
           name: hyp1-smk37-${{ env.V }}
           path: out/
+      - name: The Release (a tag smk37-vX.Y.Z only)
+        if: startsWith(github.ref, 'refs/tags/smk37-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          HYP-1 for the M-VAVE SMK-37, version $V.
+
+          Which file: **hyp1-smk37-elite-$V.fwsc** for the SMK-37 Elite, **hyp1-smk37-$V.fwsc** for the SMK-37 Pro,
+          **hyp1-smk37-mke-$V.fwsc** for the MKE-P37 (the installer refuses another model's file).
+
+          How to back up and install it, step by step: [SMK37.md](https://github.com/$GITHUB_REPOSITORY/blob/smk37/SMK37.md).
+          Back to the factory firmware any time: M-VAVE's M-UPGRADE with their SMK-37 firmware.
+
+          Free; if you like it: [buy me a coffee on Ko-fi](https://ko-fi.com/wave00066). HYP-1 is RustyPawz's work:
+          [support RedtailWorks](https://ko-fi.com/redtailworks) too.
+          EOF
+          gh release create "$GITHUB_REF_NAME" out/*.fwsc out/SHA256SUMS --title "HYP-1 SMK-37 $V" --notes-file notes.md
