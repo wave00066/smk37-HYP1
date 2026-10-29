@@ -1,4 +1,36 @@
-# HYP-1: hypnotic techno and acid for the M-VAVE FM-1
+# HYP-1 for the M-VAVE SMK-37: hypnotic techno and acid
+
+![HYP-1 on the M-VAVE SMK-37 (an illustration, with the firmware's real main screen)](docs/img/hyp-hero-smk37.png)
+
+This fork brings [HYP-1](https://github.com/RustyPawz/fm1-HYP1), RustyPawz's firmware for the M-VAVE FM-1, to
+the **M-VAVE SMK-37** (Elite, Pro and MKE-P37): the same hypnotic techno and acid machine, with more under your
+hands.
+
+- **The 16 pads are the drum steps**, on any page; `<` `>` pick the lane (kick, snare, clap, hat, open, perc)
+- **KNOB BANK** opens a picker: pieces 01-10 on the top row, the lanes on the bottom row
+- **The 4 faders** in three banks (FADER BANK): A the levels, B the acid's filter, C the effects
+- **Pitch wheel** bends, **mod wheel** opens the acid's and the drone's filters
+- **The keys**: F3-G5 are the FM-1's 27 keys, every layer as on the FM-1; the outer keys extend the scale
+- **A DX7-style FM voice** (optional, SMK-37 only): 6 notes, velocity, mono and glide, the 128 M-VAVE factory
+  patches and a user bank by SysEx; it can also be the pad's sound
+- **The screen speaks the SMK-37's printed names** (SCALE + CHORD, GLOBE, BT ...)
+
+Tested on a real SMK-37 Elite: CPU about 60 % at most with the FM voice, no dropouts. The FM-1 build stays byte
+for byte the original's.
+
+**Build, back up and install it: [SMK-37 instructions](SMK37.md).** The packages are the `smk37` workflow's
+artifacts (Actions): `hyp1-smk37-elite-*.fwsc` for the Elite, `hyp1-smk37-*.fwsc` for the Pro,
+`hyp1-smk37-mke-*.fwsc` for the MKE-P37. Back up the whole flash first (SMK37.md shows how).
+
+![HYP-1 on the SMK-37: the pads as steps, the picker, a fader bank (the host simulator)](docs/img/hyp-smk37.png)
+
+The platform layer comes from genkigenki's [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) kit and
+[fm1-amb](https://github.com/genkigenki/fm1-amb); the FM engine is msfa (Dexed) through Felucca (Apache-2.0,
+see [LICENSING.md](LICENSING.md)). Built with the help of an AI assistant (Claude).
+
+---
+
+## The original: HYP-1 on the M-VAVE FM-1
 
 ![HYP-1 running on the FM-1](docs/img/hyp-hero.png)
 
@@ -9,20 +41,6 @@ back up, and record the whole performance into your DAW.
 
 A [RedtailWorks](https://www.redtail.works) project, forked from [AMB-1](https://github.com/charlesvestal/fm1-amb)
 by Charles Vestal. Current version: **1.5.0** (each push to `main` builds the next one).
-
-> ### Also for the M-VAVE SMK-37 (this branch, `smk37`)
->
-> HYP-1 runs on the **M-VAVE SMK-37** too (Elite, Pro and MKE-P37), the same machine with more hands-on
-> control: the **16 pads are the drum steps** on any page (`<` `>` pick the lane), **KNOB BANK** opens a picker
-> for the pieces and lanes, the **4 faders** come in three banks (levels, the acid's filter, the effects), the
-> pitch wheel bends and the mod wheel opens the filters. It adds an optional **DX7-style FM voice** (6 notes,
-> the 128 M-VAVE factory patches and a user bank by SysEx). Tested on a real SMK-37 Elite: CPU about 60 % at
-> most, no dropouts. The FM-1 build stays byte for byte the same.
->
-> **How to build, back up and install it: [SMK-37 instructions](SMK37.md).** Packages: the `smk37` workflow's
-> artifacts (Actions), `hyp1-smk37-elite-*.fwsc` for the Elite.
->
-> ![HYP-1 on the SMK-37: the pads as steps, the picker, a fader bank (the host simulator)](docs/img/hyp-smk37.png)
 
 [![HYP-1: five minutes played live on the M-VAVE FM-1 (watch on YouTube)](https://img.youtube.com/vi/0UvGnZE2_VI/maxresdefault.jpg)](https://www.youtube.com/watch?v=0UvGnZE2_VI)
 
@@ -43,7 +61,6 @@ Installing it is at your own risk, though it's hard to get stuck: the web instal
 own firmware back, and an FM-1 that fails to start twice comes up in a safe mode the installer can reach.
 
 
-**M-Vave SMK-37:** see [SMK-37 instructions](SMK37.md).
 
 ## Also here: LOF-1 (experimental)
 
