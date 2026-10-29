@@ -9,6 +9,8 @@ on:
   push:
     branches: [smk37]
     tags: ["smk37-v*"]
+  release:
+    types: [published]         # a Release made on GitHub's page (tag smk37-vX.Y.Z): the files are added to it
   workflow_dispatch:
 permissions:
   contents: write              # the Release, on a tag only
@@ -140,4 +142,9 @@ jobs:
           Free; if you like it: [buy me a coffee on Ko-fi](https://ko-fi.com/wave00066). HYP-1 is RustyPawz's work:
           [support RedtailWorks](https://ko-fi.com/redtailworks) too.
           EOF
-          gh release create "$GITHUB_REF_NAME" out/*.fwsc out/SHA256SUMS --title "HYP-1 SMK-37 $V" --notes-file notes.md
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" out/*.fwsc out/SHA256SUMS --clobber
+            gh release edit "$GITHUB_REF_NAME" --title "HYP-1 SMK-37 $V" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" out/*.fwsc out/SHA256SUMS --title "HYP-1 SMK-37 $V" --notes-file notes.md
+          fi
