@@ -157,8 +157,9 @@ typedef struct {
 } fm_voice_t;
 
 static fm_part_t fm_hand, fm_padp;
-static float fm_hq[FM_Q] EN_POOL;              /* the FM voice's FIFO (mono) */
-static float fm_pq[EN_NPAD][FM_Q] EN_POOL;     /* each pad voice's */
+/* (.bss, not the POOL: the SMK-37 POOL keeps the build's 8 KiB headroom) */
+static float fm_hq[FM_Q];                      /* the FM voice's FIFO (mono) */
+static float fm_pq[EN_NPAD][FM_Q];             /* each pad voice's */
 static fm_voice_t fmv[FM_NHAND];
 static fm6_note_t fm_padn[EN_NPAD];
 static uint8_t fm_pad_was[EN_NPAD], fm_pad_down[EN_NPAD], fm_pad_live[EN_NPAD];   /* (fm_pad_seq, fm_pad_note: amb.c) */
