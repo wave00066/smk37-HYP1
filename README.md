@@ -28,6 +28,9 @@ The platform layer comes from genkigenki's [fm1-to-smk37](https://github.com/gen
 [fm1-amb](https://github.com/genkigenki/fm1-amb); the FM engine is msfa (Dexed) through Felucca (Apache-2.0,
 see [LICENSING.md](LICENSING.md)). Built with the help of an AI assistant (Claude).
 
+**Support the SMK-37 port:** it's free; if it's useful to you, [buy me a coffee on Ko-fi](https://ko-fi.com/wave00066).
+And HYP-1 itself is RustyPawz's work: [support RedtailWorks on Ko-fi](https://ko-fi.com/redtailworks) too.
+
 ---
 
 ## The original: HYP-1 on the M-VAVE FM-1
