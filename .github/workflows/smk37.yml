@@ -66,6 +66,7 @@ jobs:
       - name: The SMK-37 packages (Elite, Pro, MKE-P37)
         run: |
           set -o pipefail
+          trap 'echo "::error title=step::line $LINENO: $BASH_COMMAND"' ERR
           mkdir -p out
           for m in elite pro mke; do
             if ! BOARD=smk37 MODEL=$m ./build.sh --release "$V" > build-$m.log 2>&1; then
@@ -95,11 +96,12 @@ jobs:
               for n, s_, name, _ in sorted((r for r in rows if r[1].startswith(sec)), reverse=True)[:10]:
                   print(f"::notice title={sec}::{name} {n} B")
           PY
+              exit 1
             fi
-            tail -4 build-$m.log
+            grep -E "package|FAIL|warning" build-$m.log | while IFS= read -r l; do echo "::notice title=$m::$l"; done
             cp build/hyp1-smk37*-"$V".fwsc out/ 2>/dev/null || true
           done
-          ls -l out
+          ls out | while IFS= read -r l; do echo "::notice title=out::$l"; done
           (cd out && sha256sum *.fwsc > SHA256SUMS && cat SHA256SUMS)
       - name: "Tests (the FM-1 build last, the tests use its files)"
         run: |
