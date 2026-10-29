@@ -537,7 +537,7 @@ def run(a, backend, out, ask):
     return 0
 
 
-BACKUP_NEXT = """
+BACKUP_NEXT = r"""
 The keyboard now restarts as a USB disk named "WL82 UBOOT1.00" (the chip's ROM bootloader). Read its whole
 flash twice with jl-uboot-tool (https://github.com/kagaimiq/jl-uboot-tool; Linux: as root, the disk is /dev/sgN;
 Windows: an administrator prompt, the disk is \\.\PhysicalDriveN):
