@@ -154,9 +154,17 @@ FM-1 build is byte for byte the base's, runs the tests, and keeps the packages a
 
 **First, a full flash backup.** The SMK-37 keeps data unique to your unit in its flash (the factory key, pad
 and wheel calibration at `0xC1000`, the Bluetooth pairing, the chip's key data). HYP-1 never writes there (an
-allow-list and a second guard in the flash driver), but back it up anyway, as
-[fm1-to-smk37, docs/02-update-and-recovery.md, section 3](https://github.com/genkigenki/fm1-to-smk37/blob/main/docs/02-update-and-recovery.md)
-describes, and check that the text `trimdat` sits at offset `0xC1224` of the dump.
+allow-list and a second guard in the flash driver), but back it up anyway, before anything is installed (the
+kit's method A, [fm1-to-smk37 docs/02, section 3](https://github.com/genkigenki/fm1-to-smk37/blob/main/docs/02-update-and-recovery.md)):
+
+```sh
+python3 tools/fm1_install.py --backup hyp1-smk37-elite.fwsc   # the check only: the update loader starts, nothing
+                                                               # is written; then the ROM bootloader (a USB disk)
+# then, as it prints: jl-uboot-tool reads the 1 MiB flash twice
+python3 tools/smk_dump_check.py smk37-dump-1.bin smk37-dump-2.bin   # same twice, "trimdat" at 0xC1224
+```
+
+Switch the keyboard off and on afterwards: it comes back in update mode, and the install below finishes it.
 
 Then, with the keyboard connected by USB:
 

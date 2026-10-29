@@ -27,6 +27,7 @@ import time
 
 HS_QUERY = bytes([0xF0, 0x00, 0x32, 0x45, 0x00, 0x00, 0x00, 0x40, 0x7F, 0xF7])
 UPGRADE = bytes([0xF0, 0x22, 0x24, 0x35, 0x7F, 0xF7])
+UBOOT = bytes([0xF0, 0x22, 0x24, 0x35, 0x7D, 0xF7])   # the soft key: the update loader restarts into the chip's ROM bootloader
 FINISH_CHECK, FINISH_WRITE = 0xE0000000, 0xF0000000
 MAXDATA = 512
 BLOCKS, BLK, KEEP = 20, 0x30, 0x2F         # BLOCKS: the identity blocks (more may follow, see block_count)
@@ -520,6 +521,8 @@ def run(a, backend, out, ask):
     dev = up.find()
     if not dev:
         raise not_found(up)
+    if a.backup:
+        return backup(up, dev, image, product, a, out, ask)
     print(f"device:  {dev.id.text}  ({dev.name})" + ("  in update mode: the write will be finished" if dev.id.loader else ""),
           file=out)
     if not a.yes and not ask("Install? Do not unplug the FM-1 while writing. [y/N] "):
@@ -531,6 +534,43 @@ def run(a, backend, out, ask):
         up.install(dev, image, product, prog)
     finally:
         prog.end()
+    return 0
+
+
+BACKUP_NEXT = """
+The keyboard now restarts as a USB disk named "WL82 UBOOT1.00" (the chip's ROM bootloader). Read its whole
+flash twice with jl-uboot-tool (https://github.com/kagaimiq/jl-uboot-tool; Linux: as root, the disk is /dev/sgN;
+Windows: an administrator prompt, the disk is \\.\PhysicalDriveN):
+
+  python3 jluboottool.py --device <the disk> --chip wl82 "read 0 0x100000 smk37-dump-1.bin"
+  python3 jluboottool.py --device <the disk> --chip wl82 "read 0 0x100000 smk37-dump-2.bin"
+  python3 tools/smk_dump_check.py smk37-dump-1.bin smk37-dump-2.bin
+
+Keep both files in two places. Then switch the keyboard off and on: it comes back in update mode. Run the
+install to finish it, or install M-Vave's factory firmware with M-UPGRADE to stay stock."""
+
+
+def backup(up, dev, image, product, a, out, ask):
+    """the kit's method A (fm1-to-smk37 docs/02, 3.1): the running firmware checks the package and restarts into
+    the package's update loader, which has written nothing yet; the loader gets the soft key and restarts into
+    the ROM bootloader, where the whole flash can be read"""
+    if not same_keyboard(dev.id.text, product):
+        dev.link.close()
+        raise InstallError("model", f"the device is {dev.id.text}, the package is for {product}")
+    print(f"device:  {dev.id.text}  ({dev.name})", file=out)
+    if not a.yes and not ask("Start the update loader for a flash backup? Nothing is written. [y/N] "):
+        dev.link.close()
+        print("cancelled", file=out)
+        return 1
+    prog = Progress(out)
+    try:
+        ota = dev if dev.id.loader else up.check(dev, image, prog)
+    finally:
+        prog.end()
+    ota.link.send(UBOOT)
+    time.sleep(DELAY["start"])
+    ota.link.close()
+    print("the update loader is running; sent it the ROM bootloader key" + BACKUP_NEXT, file=out)
     return 0
 
 
@@ -548,6 +588,9 @@ def main(argv=None, backend=None, out=sys.stdout, ask=ask_tty):
     ap.add_argument("--port", metavar="NAME", help="MIDI port to use (part of its name)")
     ap.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     ap.add_argument("--force", action="store_true", help="install a package without the Felucca loader marker")
+    ap.add_argument("--backup", action="store_true",
+                    help="before an install (the SMK-37): only the package check, which starts the update loader "
+                         "(nothing is written), then the loader into the ROM bootloader, for a full flash backup")
     a = ap.parse_args(argv)
     if bool(a.info) == bool(a.package):
         ap.error("give a PACKAGE.fwsc or --info")

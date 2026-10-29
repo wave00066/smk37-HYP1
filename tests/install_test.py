@@ -349,5 +349,26 @@ def starrykey():
 
 starrykey()
 
+
+def backups():                                   # --backup: the check only (nothing written), then the soft key
+    TMP.mkdir(parents=True, exist_ok=True)       # (the earlier tests cleaned it up)
+    raw = package()
+    image = I.logical_image(raw)
+    p = pkgfile("bk.fwsc", raw)
+    dev = FakeFM1(image)
+    rc, out, err = cli([p, "--backup", "--yes"], dev)
+    ok(rc == 0 and dev.upgrades == 1 and dev.served == 4 and dev.bad == 0 and dev.sent[-1] == I.UBOOT and "WL82" in out,
+       f"--backup: the package checked ({dev.served} reads), no write, the loader sent to the ROM bootloader")
+    dev = FakeFM1(image, identity="ota-FM-1_900", name="Felucca Update")
+    rc, out, err = cli([p, "--backup", "--yes"], dev)
+    ok(rc == 0 and dev.upgrades == 0 and dev.sent[-1] == I.UBOOT, "--backup: a device already in update mode: the key only")
+    dev = FakeFM1(image, identity="SMK-37 Pro_016", name="SMK-37 Pro")
+    rc, out, err = cli([p, "--backup", "--yes"], dev)
+    ok(rc == 6 and dev.upgrades == 0 and I.UBOOT not in dev.sent, "--backup: another keyboard's package: refused")
+
+
+backups()
+shutil.rmtree(TMP, ignore_errors=True)
+
 print(f"INSTALL TESTS FAILED ({failed})" if failed else "install tests passed")
 sys.exit(1 if failed else 0)
