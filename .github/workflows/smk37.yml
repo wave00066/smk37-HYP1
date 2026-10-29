@@ -71,7 +71,7 @@ jobs:
           for m in elite pro mke; do
             if ! BOARD=smk37 MODEL=$m ./build.sh --release "$V" > build-$m.log 2>&1; then
               # the errors as annotations (readable with gh run view, without the log)
-              grep -E "error|Error|undefined|overflow|fatal" build-$m.log | head -25 | while IFS= read -r l; do echo "::error title=$m::$l"; done || true
+              grep -E "FAIL|error|Error|undefined|overflow|fatal|SystemExit|Traceback" build-$m.log | head -25 | while IFS= read -r l; do echo "::error title=$m::$l"; done || true
               tail -25 build-$m.log | while IFS= read -r l; do echo "::warning title=$m tail::$l"; done || true
               # measuring only (no package): link again with POOL 64 KiB longer, then the regions' use
               # and the biggest RAM objects, as annotations
