@@ -10,6 +10,20 @@ back up, and record the whole performance into your DAW.
 A [RedtailWorks](https://www.redtail.works) project, forked from [AMB-1](https://github.com/charlesvestal/fm1-amb)
 by Charles Vestal. Current version: **1.5.0** (each push to `main` builds the next one).
 
+> ### Also for the M-VAVE SMK-37 (this branch, `smk37`)
+>
+> HYP-1 runs on the **M-VAVE SMK-37** too (Elite, Pro and MKE-P37), the same machine with more hands-on
+> control: the **16 pads are the drum steps** on any page (`<` `>` pick the lane), **KNOB BANK** opens a picker
+> for the pieces and lanes, the **4 faders** come in three banks (levels, the acid's filter, the effects), the
+> pitch wheel bends and the mod wheel opens the filters. It adds an optional **DX7-style FM voice** (6 notes,
+> the 128 M-VAVE factory patches and a user bank by SysEx). Tested on a real SMK-37 Elite: CPU about 60 % at
+> most, no dropouts. The FM-1 build stays byte for byte the same.
+>
+> **How to build, back up and install it: [SMK-37 instructions](SMK37.md).** Packages: the `smk37` workflow's
+> artifacts (Actions), `hyp1-smk37-elite-*.fwsc` for the Elite.
+>
+> ![HYP-1 on the SMK-37: the pads as steps, the picker, a fader bank (the host simulator)](docs/img/hyp-smk37.png)
+
 [![HYP-1: five minutes played live on the M-VAVE FM-1 (watch on YouTube)](https://img.youtube.com/vi/0UvGnZE2_VI/maxresdefault.jpg)](https://www.youtube.com/watch?v=0UvGnZE2_VI)
 
 *Five minutes played live on piece 01: [watch on YouTube](https://www.youtube.com/watch?v=0UvGnZE2_VI).*
