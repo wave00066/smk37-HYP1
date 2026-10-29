@@ -68,7 +68,13 @@ jobs:
           set -o pipefail
           mkdir -p out
           for m in elite pro mke; do
-            BOARD=smk37 MODEL=$m ./build.sh --release "$V" 2>&1 | tee build-$m.log | tail -4
+            if ! BOARD=smk37 MODEL=$m ./build.sh --release "$V" > build-$m.log 2>&1; then
+              # the errors as annotations (readable with gh run view, without the log)
+              grep -E "error|Error|undefined|overflow|fatal" build-$m.log | head -25 | while IFS= read -r l; do echo "::error title=$m::$l"; done
+              tail -15 build-$m.log | while IFS= read -r l; do echo "::warning title=$m tail::$l"; done
+              exit 1
+            fi
+            tail -4 build-$m.log
             cp build/hyp1-smk37*-"$V".fwsc out/ 2>/dev/null || true
           done
           ls -l out
