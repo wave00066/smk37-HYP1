@@ -105,6 +105,7 @@ fm:                             # the owner's addition (2026-10-27): a DX7-style
   midi: channel 2 in and out
   storage: "OBJ_FMU0 0xA1000/0xA2000, OBJ_FMU1 0xA3000/0xA4000 (the store window, below the owner tag)"
   fm1_build: unchanged (EN_FM 0; byte-identical)
+  measured: "1.5.8 on an SMK-37 Elite (2026-10-29): CPU about 60 % at most (the song + an FM chord), 0 xruns after a restart (1 once, after the first boot)"
 
 pedal: none
 
@@ -113,5 +114,4 @@ open_questions:
   - pad pressure (aftertouch): the community layer reads hits only; M-VAVE's smk37_open scan.c reads pressure
   - velocity on the hand-played voices (en_note has no level)
   - the remote (SCALE + GLOBE) does not send the SMK's extra controls
-  - the FM voice's CPU on the device (host +20 % worst case): measure with GLOBE held, lower FM_NHAND if needed
   - more than one user bank, single-voice SysEx (Dexed's edit buffer)
