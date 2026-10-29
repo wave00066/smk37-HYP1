@@ -72,7 +72,29 @@ jobs:
               # the errors as annotations (readable with gh run view, without the log)
               grep -E "error|Error|undefined|overflow|fatal" build-$m.log | head -25 | while IFS= read -r l; do echo "::error title=$m::$l"; done
               tail -15 build-$m.log | while IFS= read -r l; do echo "::warning title=$m tail::$l"; done
-              exit 1
+              # measuring only (no package): link again with POOL 64 KiB longer, then the regions' use
+              # and the biggest RAM objects, as annotations
+              cp firmware/app.ld /tmp/app.ld.keep
+              sed -i 's/LENGTH = 0x54000/LENGTH = 0x64000/; s/ORIGIN = 0x01C7C000/ORIGIN = 0x01C8C000/' firmware/app.ld
+              BOARD=smk37 MODEL=$m ./build.sh > diag.log 2>&1 || true
+              cp /tmp/app.ld.keep firmware/app.ld
+              elf=$(ls -t $(find build -name amb.elf) | head -1)
+              od=$(ls ~/.jieli/*/common/bin/objdump | head -1)
+              "$od" -t "$elf" > syms.txt
+              python3 - <<'PY'
+          import re
+          rows = []
+          for l in open("syms.txt"):
+              m = re.match(r"^([0-9a-f]{8}) .{7} (\.\S+)\s+([0-9a-f]{8}) (\S+)$", l.strip())
+              if m: rows.append((int(m[3], 16), m[2], m[4], int(m[1], 16)))
+          sym = {r[2]: r[3] for r in rows}
+          for a, b, size in (("_bss_start", "_bss_end", 96 * 1024), ("_pool_start", "_pool_end", 0x54000)):
+              if a in sym and b in sym:
+                  print(f"::notice title=RAM::{a[1:-6]} uses {sym[b] - sym[a]} of {size} B ({size - (sym[b] - sym[a])} free)")
+          for sec in (".bss", ".pool", ".noinit"):
+              for n, s_, name, _ in sorted((r for r in rows if r[1].startswith(sec)), reverse=True)[:10]:
+                  print(f"::notice title={sec}::{name} {n} B")
+          PY
             fi
             tail -4 build-$m.log
             cp build/hyp1-smk37*-"$V".fwsc out/ 2>/dev/null || true
